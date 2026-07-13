@@ -54,6 +54,10 @@ def active_key() -> dict | None:
     return data["keys"][data["active"]]
 
 
+def active_index() -> int | None:
+    return _load()["active"]
+
+
 def masked(key: str) -> str:
     """A safe-to-display version of a key (never print a full secret)."""
     return f"{key[:6]}…{key[-4:]}" if len(key) > 12 else "…"
