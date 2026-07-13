@@ -80,6 +80,7 @@ agent/tools.py    # tool definitions + the system prompt
 agent/loop.py     # the observe → think → act → verify loop
 run.py            # chat entry point
 config.py         # loads the API key from .env
+apikeys/          # multi-provider API-key manager (detect provider, list models, free/paid)
 ```
 
 ## Running it
@@ -98,6 +99,19 @@ python run.py
 ```
 
 Set `JSON_DEBUG=1` to print exactly what the agent "sees" on each step — handy for tuning.
+
+## Multi-provider API-key manager
+
+A small bundled tool for managing API keys across providers. Paste a key and it
+auto-detects the provider from the key's format, stores several keys with one marked
+active, and lists the models a key can reach — labelling each **free** or **paid**.
+
+```bash
+python -m apikeys      # commands: keys | add | use <n> | models | quit
+```
+
+Providers detected by key prefix: Anthropic (`sk-ant-`), OpenAI (`sk-proj-`),
+Google (`AIza` / `AQ.`), Groq (`gsk_`), OpenRouter (`sk-or-`), xAI (`xai-`).
 
 ## Known limitations (kept honest on purpose)
 
