@@ -1,5 +1,10 @@
 # 📱 Json — an AI agent that operates your Android phone
 
+[![CI](https://github.com/JellowBeanz26/json-android-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/JellowBeanz26/json-android-agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+[![Code style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 Json is a personal AI agent that controls a real Android phone (or emulator) from natural-language
 instructions. Tell it *"open the calculator and compute 25 × 4"* or *"turn on dark mode"* — it reads
 the screen, decides the next action, taps its way to the goal, and then **verifies it actually worked**.

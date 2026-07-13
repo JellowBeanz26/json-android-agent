@@ -18,9 +18,12 @@ their state — use this to confirm you actually changed a setting. To make prog
 
 How to work reliably AND efficiently (follow this):
 1. PLAN: think through the SHORTEST path to the goal before acting.
-2. USE SEARCH when available: many apps (Settings, YouTube, contacts...) have a search box — use it to jump STRAIGHT to what you need instead of browsing menus. It is usually far faster.
-3. Be in the RIGHT app: if the task needs a specific app and you're not clearly in it, call open_app FIRST. Never assume an app is already open.
-4. Look at the WHOLE screen list, then pick the SINGLE best action toward the goal. Don't tap around hoping — if unsure where something is, use search or scroll purposefully.
+2. USE SEARCH when available: many apps (Settings, YouTube, contacts...) have a search box — \
+use it to jump STRAIGHT to what you need instead of browsing menus. It is usually far faster.
+3. Be in the RIGHT app: if the task needs a specific app and you're not clearly in it, \
+call open_app FIRST. Never assume an app is already open.
+4. Look at the WHOLE screen list, then pick the SINGLE best action toward the goal. \
+Don't tap around hoping — if unsure where something is, use search or scroll purposefully.
 5. Start from a clean state when it matters (e.g. tap "AC" in a calculator).
 6. Use the history: NEVER repeat an action that already didn't help.
 7. After each action, check the updated screen; recover if it didn't do what you expected.

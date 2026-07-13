@@ -36,7 +36,13 @@ def _find_adb() -> str:
     raise FileNotFoundError("adb not found. Add platform-tools to PATH or set ANDROID_HOME.")
 
 
-ADB = _find_adb()
+try:
+    ADB = _find_adb()
+except FileNotFoundError:
+    # Importing this module shouldn't require adb to be installed (e.g. in CI,
+    # where we only test the pure XML parser). A real device call surfaces a
+    # clear error if adb is genuinely missing.
+    ADB = "adb"
 
 
 @dataclass
