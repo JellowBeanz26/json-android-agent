@@ -8,7 +8,7 @@ def test_detects_anthropic():
 
 def test_detects_google_aiza_and_aq():
     assert detect("AIzaSyABC123").id == "google"
-    assert detect("AQ.Ab8xyz").id == "google"
+    assert detect("AQ.demo_fake_test").id == "google"
 
 
 def test_detects_groq():
