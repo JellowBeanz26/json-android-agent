@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onOpenDebug: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val c = MaterialTheme.colorScheme
@@ -209,6 +209,19 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
                     border = BorderStroke(1.dp, c.error),
                     shape = RoundedCornerShape(14.dp),
                 ) { Text("Clear all conversations") }
+            }
+
+            Section("Developer") {
+                Text(
+                    "See every request, response, and error — handy when adding a new key.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = onOpenDebug,
+                    shape = RoundedCornerShape(14.dp),
+                ) { Text("View debug log") }
             }
 
             Section("About") {

@@ -11,10 +11,14 @@ import com.jellowbeanz.json.ChatViewModel
 @Composable
 fun App() {
     val vm: ChatViewModel = viewModel()
-    var showSettings by rememberSaveable { mutableStateOf(false) }
-    if (showSettings) {
-        SettingsScreen(onBack = { showSettings = false }, onClearData = { vm.deleteAll() })
-    } else {
-        ChatScreen(vm = vm, onOpenSettings = { showSettings = true })
+    var screen by rememberSaveable { mutableStateOf("chat") }
+    when (screen) {
+        "settings" -> SettingsScreen(
+            onBack = { screen = "chat" },
+            onClearData = { vm.deleteAll() },
+            onOpenDebug = { screen = "debug" },
+        )
+        "debug" -> DebugLogScreen(onBack = { screen = "settings" })
+        else -> ChatScreen(vm = vm, onOpenSettings = { screen = "settings" })
     }
 }

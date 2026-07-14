@@ -1,5 +1,6 @@
 package com.jellowbeanz.json.llm
 
+import com.jellowbeanz.json.Logger
 import com.jellowbeanz.json.data.Message
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -24,6 +25,7 @@ object AnthropicProvider : LlmProvider {
     )
 
     override fun stream(apiKey: String, model: String, system: String, history: List<Message>): Flow<LlmChunk> = flow {
+        Logger.d("→ $label · $model")
         val messages = JSONArray()
         for (m in history) {
             messages.put(
@@ -57,6 +59,7 @@ object AnthropicProvider : LlmProvider {
         val answer = StringBuilder()
         llmHttp.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) {
+                Logger.e("$label HTTP ${resp.code}: ${runCatching { resp.body?.string()?.take(400) }.getOrNull()}")
                 emit(LlmChunk("", "Couldn't reach Claude (error ${resp.code}). Check your API key in Settings."))
                 return@use
             }

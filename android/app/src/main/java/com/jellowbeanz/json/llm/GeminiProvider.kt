@@ -1,5 +1,6 @@
 package com.jellowbeanz.json.llm
 
+import com.jellowbeanz.json.Logger
 import com.jellowbeanz.json.data.Message
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +27,7 @@ object GeminiProvider : LlmProvider {
     )
 
     override fun stream(apiKey: String, model: String, system: String, history: List<Message>): Flow<LlmChunk> = flow {
+        Logger.d("→ $label · $model")
         val contents = JSONArray()
         for (m in history) {
             val role = if (m.role == "assistant") "model" else "user"
@@ -53,6 +55,7 @@ object GeminiProvider : LlmProvider {
         val raw = StringBuilder()
         llmHttp.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) {
+                Logger.e("$label HTTP ${resp.code}: ${runCatching { resp.body?.string()?.take(400) }.getOrNull()}")
                 emit(LlmChunk("", "Couldn't reach Gemini (error ${resp.code}). Check your API key in Settings."))
                 return@use
             }

@@ -1,5 +1,6 @@
 package com.jellowbeanz.json.llm
 
+import com.jellowbeanz.json.Logger
 import com.jellowbeanz.json.data.Message
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -48,6 +49,7 @@ class LocalProvider(baseUrl: String) : LlmProvider {
         val raw = StringBuilder()
         llmHttp.newCall(builder.build()).execute().use { resp ->
             if (!resp.isSuccessful) {
+                Logger.e("Local HTTP ${resp.code}: ${runCatching { resp.body?.string()?.take(400) }.getOrNull()}")
                 emit(LlmChunk("", "Couldn't reach the local model (error ${resp.code}). Check the URL in Settings."))
                 return@use
             }

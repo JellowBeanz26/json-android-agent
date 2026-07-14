@@ -124,6 +124,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     targetA = "I don't recognize that API key. Add a Gemini, Claude, or OpenAI key in Settings, or turn on a Local model."
                 } else {
                     val chosenModel = if (provider is LocalProvider) s.localModel else Llm.resolveModel(provider, s.model)
+                    Logger.d("send · ${provider.label} · $chosenModel")
                     provider.stream(apiKey, chosenModel, SettingsStore.systemPrompt(s), repo.history(id))
                         .collect { chunk ->
                             targetR = chunk.reasoning
@@ -131,6 +132,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         }
                 }
             } catch (e: Exception) {
+                Logger.e("stream failed", e)
                 if (targetA.isEmpty()) targetA = "Something went wrong: ${e.message ?: "request failed"}"
             }
             done = true
