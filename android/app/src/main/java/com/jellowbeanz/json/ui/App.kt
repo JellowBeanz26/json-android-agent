@@ -13,7 +13,7 @@ fun App() {
     val vm: ChatViewModel = viewModel()
     var showSettings by remember { mutableStateOf(false) }
     if (showSettings) {
-        SettingsScreen(onBack = { showSettings = false })
+        SettingsScreen(onBack = { showSettings = false }, onClearData = { vm.deleteAll() })
     } else {
         ChatScreen(vm = vm, onOpenSettings = { showSettings = true })
     }

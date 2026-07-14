@@ -7,6 +7,7 @@ import com.jellowbeanz.json.data.ChatRepository
 import com.jellowbeanz.json.data.Conversation
 import com.jellowbeanz.json.data.JsonDatabase
 import com.jellowbeanz.json.data.Message
+import com.jellowbeanz.json.data.SettingsStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +21,7 @@ import kotlinx.coroutines.launch
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = ChatRepository(JsonDatabase.get(app).chatDao())
+    private val settings = SettingsStore(app)
 
     /** All saved conversations (pinned first, then most-recent). */
     val conversations: StateFlow<List<Conversation>> =
@@ -82,7 +84,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
             _thinking.value = true
             val reply = try {
-                GeminiClient.chat(apiKey, MODEL, SYSTEM, repo.history(id))
+                val s = settings.snapshot()
+                GeminiClient.chat(apiKey, s.model, SettingsStore.systemPrompt(s), repo.history(id))
             } catch (e: Exception) {
                 "Something went wrong: ${e.message ?: "request failed"}"
             }
@@ -94,13 +97,5 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private fun titleFrom(text: String): String {
         val firstLine = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: "New chat"
         return if (firstLine.length <= 40) firstLine else firstLine.take(40).trimEnd() + "…"
-    }
-
-    companion object {
-        private const val MODEL = "gemini-2.5-flash"
-        private const val SYSTEM =
-            "You are Json, a helpful AI assistant living on the user's Android phone. " +
-                "Reply in the user's language. Be warm, clear, and concise. " +
-                "Use markdown (bold, lists, fenced code blocks) when it improves readability."
     }
 }
