@@ -8,14 +8,16 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** Calls Gemini from the phone (Vertex AI generateContent endpoint), with full conversation memory. */
+/** Calls Gemini from the phone (Vertex AI generateContent endpoint), with memory + reasoning. */
 object GeminiClient {
 
+    /** The model's answer plus its (optional) chain-of-thought summary. */
+    data class ChatReply(val text: String, val reasoning: String)
+
     /**
-     * Sends the whole [history] so the model has context, not just the last message.
-     * Returns the reply text, or a friendly error string.
+     * Sends the whole [history] and asks the model to include a summary of its thinking.
      */
-    suspend fun chat(apiKey: String, model: String, system: String, history: List<Message>): String =
+    suspend fun chat(apiKey: String, model: String, system: String, history: List<Message>): ChatReply =
         withContext(Dispatchers.IO) {
             try {
                 val contents = JSONArray()
@@ -33,6 +35,10 @@ object GeminiClient {
                         JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))),
                     )
                     .put("contents", contents)
+                    .put(
+                        "generationConfig",
+                        JSONObject().put("thinkingConfig", JSONObject().put("includeThoughts", true)),
+                    )
                     .toString()
 
                 val endpoint =
@@ -51,24 +57,34 @@ object GeminiClient {
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                 val response = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                 if (code !in 200..299) {
-                    return@withContext "Couldn't reach the model (error $code). Check your API key in Settings."
+                    return@withContext ChatReply(
+                        "Couldn't reach the model (error $code). Check your API key in Settings.",
+                        "",
+                    )
                 }
-                parseText(response)
+                parseReply(response)
             } catch (e: Exception) {
-                "Something went wrong: ${e.message ?: "request failed"}"
+                ChatReply("Something went wrong: ${e.message ?: "request failed"}", "")
             }
         }
 
-    private fun parseText(response: String): String {
-        val candidates = JSONObject(response).optJSONArray("candidates") ?: return "(no response)"
-        if (candidates.length() == 0) return "(no response)"
+    private fun parseReply(response: String): ChatReply {
+        val candidates = JSONObject(response).optJSONArray("candidates")
+            ?: return ChatReply("(no response)", "")
+        if (candidates.length() == 0) return ChatReply("(no response)", "")
         val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts")
-            ?: return "(no response)"
-        val sb = StringBuilder()
+            ?: return ChatReply("(no response)", "")
+        val answer = StringBuilder()
+        val thoughts = StringBuilder()
         for (i in 0 until parts.length()) {
-            val t = parts.getJSONObject(i).optString("text")
-            if (t.isNotEmpty()) sb.append(t)
+            val part = parts.getJSONObject(i)
+            val t = part.optString("text")
+            if (t.isEmpty()) continue
+            if (part.optBoolean("thought", false)) thoughts.append(t) else answer.append(t)
         }
-        return sb.toString().trim().ifBlank { "(no response)" }
+        return ChatReply(
+            answer.toString().trim().ifBlank { "(no response)" },
+            thoughts.toString().trim(),
+        )
     }
 }

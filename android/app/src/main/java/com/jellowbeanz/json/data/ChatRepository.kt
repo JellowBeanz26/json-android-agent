@@ -12,8 +12,10 @@ class ChatRepository(private val dao: ChatDao) {
     suspend fun createConversation(title: String, now: Long): Long =
         dao.insertConversation(Conversation(title = title, createdAt = now, updatedAt = now))
 
-    suspend fun addMessage(conversationId: Long, role: String, text: String, now: Long) {
-        dao.insertMessage(Message(conversationId = conversationId, role = role, text = text, createdAt = now))
+    suspend fun addMessage(conversationId: Long, role: String, text: String, now: Long, reasoning: String = "") {
+        dao.insertMessage(
+            Message(conversationId = conversationId, role = role, text = text, createdAt = now, reasoning = reasoning),
+        )
         dao.touch(conversationId, now)
     }
 

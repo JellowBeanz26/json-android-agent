@@ -34,4 +34,5 @@ data class Message(
     val role: String,
     val text: String,
     val createdAt: Long,
+    val reasoning: String = "",
 )

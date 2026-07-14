@@ -87,9 +87,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val s = settings.snapshot()
                 GeminiClient.chat(apiKey, s.model, SettingsStore.systemPrompt(s), repo.history(id))
             } catch (e: Exception) {
-                "Something went wrong: ${e.message ?: "request failed"}"
+                GeminiClient.ChatReply("Something went wrong: ${e.message ?: "request failed"}", "")
             }
-            repo.addMessage(id, "assistant", reply, System.currentTimeMillis())
+            repo.addMessage(id, "assistant", reply.text, System.currentTimeMillis(), reply.reasoning)
             _thinking.value = false
         }
     }

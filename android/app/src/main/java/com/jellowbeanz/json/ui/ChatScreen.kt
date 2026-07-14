@@ -18,8 +18,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
@@ -32,8 +35,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -109,7 +114,7 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             items(messages, key = { it.id }) { msg ->
-                                if (msg.role == "user") UserBubble(msg.text) else AssistantMessage(msg.text)
+                                if (msg.role == "user") UserBubble(msg.text) else AssistantMessage(msg.text, msg.reasoning)
                             }
                             if (thinking) item { ThinkingIndicator() }
                         }
@@ -440,17 +445,55 @@ private fun UserBubble(text: String) {
 }
 
 @Composable
-private fun AssistantMessage(text: String) {
+private fun AssistantMessage(text: String, reasoning: String) {
     val c = MaterialTheme.colorScheme
+    val clipboard = LocalClipboardManager.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         JsonMark()
         Spacer(Modifier.width(12.dp))
-        Text(
-            text,
-            style = MaterialTheme.typography.bodyLarge,
-            color = c.onBackground,
-            modifier = Modifier.padding(top = 3.dp),
-        )
+        Column(Modifier.weight(1f)) {
+            if (reasoning.isNotBlank()) {
+                ReasoningSection(reasoning)
+                Spacer(Modifier.height(8.dp))
+            }
+            MarkdownText(text, color = c.onBackground, modifier = Modifier.padding(top = 3.dp))
+            IconButton(
+                onClick = { clipboard.setText(AnnotatedString(text)) },
+                modifier = Modifier.size(30.dp),
+            ) {
+                Icon(Icons.Filled.ContentCopy, "Copy", tint = c.onSurfaceVariant, modifier = Modifier.size(15.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReasoningSection(reasoning: String) {
+    val c = MaterialTheme.colorScheme
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { expanded = !expanded }
+                .padding(vertical = 4.dp, horizontal = 2.dp),
+        ) {
+            Icon(painterResource(R.drawable.ic_json_spark), null, tint = c.primary, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Thought process", style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
+            Icon(
+                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+                tint = c.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        if (expanded) {
+            Surface(color = c.surfaceVariant, shape = RoundedCornerShape(10.dp), modifier = Modifier.padding(top = 4.dp)) {
+                MarkdownText(reasoning, color = c.onSurfaceVariant, modifier = Modifier.padding(12.dp))
+            }
+        }
     }
 }
 
