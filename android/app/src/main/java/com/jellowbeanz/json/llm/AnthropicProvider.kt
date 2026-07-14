@@ -16,9 +16,11 @@ object AnthropicProvider : LlmProvider {
     override val id = "anthropic"
     override val label = "Anthropic (Claude)"
     override val models = listOf(
-        ModelOption("claude-sonnet-4-20250514", "Sonnet 4", "Balanced, streams its thinking"),
-        ModelOption("claude-opus-4-20250514", "Opus 4", "Most capable, deepest thinking"),
-        ModelOption("claude-3-5-haiku-20241022", "Haiku 3.5", "Fastest (no thinking)"),
+        ModelOption("claude-sonnet-4-20250514", "Claude Sonnet 4", "Paid · \$3 / \$15 per 1M · thinks"),
+        ModelOption("claude-opus-4-20250514", "Claude Opus 4", "Paid · \$15 / \$75 per 1M · deepest"),
+        ModelOption("claude-3-7-sonnet-20250219", "Claude 3.7 Sonnet", "Paid · \$3 / \$15 per 1M · thinks"),
+        ModelOption("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet", "Paid · \$3 / \$15 per 1M"),
+        ModelOption("claude-3-5-haiku-20241022", "Claude 3.5 Haiku", "Paid · \$0.80 / \$4 per 1M · fast"),
     )
 
     override fun stream(apiKey: String, model: String, system: String, history: List<Message>): Flow<LlmChunk> = flow {

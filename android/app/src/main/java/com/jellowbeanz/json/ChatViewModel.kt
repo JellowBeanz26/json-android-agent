@@ -9,6 +9,7 @@ import com.jellowbeanz.json.data.JsonDatabase
 import com.jellowbeanz.json.data.Message
 import com.jellowbeanz.json.data.SettingsStore
 import com.jellowbeanz.json.llm.Llm
+import com.jellowbeanz.json.llm.LocalProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -77,11 +78,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
             repo.addMessage(id, "user", trimmed, now)
 
-            if (apiKey.isBlank()) {
+            val s = settings.snapshot()
+            val useLocal = s.useLocal && s.localUrl.isNotBlank()
+            if (!useLocal && apiKey.isBlank()) {
                 repo.addMessage(
                     id,
                     "assistant",
-                    "I need an API key first — open the menu → Settings and paste one.",
+                    "I need an API key first — open the menu → Settings and paste one, or turn on a Local model.",
                     System.currentTimeMillis(),
                 )
                 return@launch
@@ -116,12 +119,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             try {
-                val s = settings.snapshot()
-                val provider = Llm.forKey(apiKey)
+                val provider = if (useLocal) LocalProvider(s.localUrl) else Llm.forKey(apiKey)
                 if (provider == null) {
-                    targetA = "I don't recognize that API key. Add a Gemini, Claude, or OpenAI key in Settings."
+                    targetA = "I don't recognize that API key. Add a Gemini, Claude, or OpenAI key in Settings, or turn on a Local model."
                 } else {
-                    val chosenModel = Llm.resolveModel(provider, s.model)
+                    val chosenModel = if (provider is LocalProvider) s.localModel else Llm.resolveModel(provider, s.model)
                     provider.stream(apiKey, chosenModel, SettingsStore.systemPrompt(s), repo.history(id))
                         .collect { chunk ->
                             targetR = chunk.reasoning

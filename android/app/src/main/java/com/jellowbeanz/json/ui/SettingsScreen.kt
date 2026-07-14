@@ -9,10 +9,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -39,10 +42,15 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var about by remember { mutableStateOf("") }
     var instructions by remember { mutableStateOf("") }
+    var localUrl by remember { mutableStateOf("") }
+    var localModel by remember { mutableStateOf("") }
+    val useLocal by store.useLocal.collectAsState(initial = false)
     LaunchedEffect(Unit) {
         name = store.userName.first()
         about = store.about.first()
         instructions = store.instructions.first()
+        localUrl = store.localUrl.first()
+        localModel = store.localModel.first()
     }
 
     var key by remember { mutableStateOf(KeyStore.get(context)) }
@@ -96,18 +104,41 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
 
             val activeProvider = remember(key) { Llm.forKey(key) ?: GeminiProvider }
             Section("Model · ${activeProvider.label}") {
-                activeProvider.models.forEachIndexed { i, m ->
+                var expanded by remember { mutableStateOf(false) }
+                val selected = activeProvider.models.firstOrNull { it.id == model } ?: activeProvider.models.first()
+                Box {
                     Row(
-                        Modifier.fillMaxWidth().clickable { scope.launch { store.setModel(m.id) } }.padding(vertical = 6.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { expanded = true }
+                            .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(m.label, style = MaterialTheme.typography.bodyLarge, color = c.onBackground)
-                            Text(m.note, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                            Text(selected.label, style = MaterialTheme.typography.bodyLarge, color = c.onBackground)
+                            Text(selected.note, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
                         }
-                        RadioButton(selected = model == m.id, onClick = { scope.launch { store.setModel(m.id) } })
+                        Icon(Icons.Filled.ArrowDropDown, "Choose model", tint = c.onSurfaceVariant)
                     }
-                    if (i < activeProvider.models.lastIndex) HorizontalDivider(color = c.outline.copy(alpha = 0.4f))
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        activeProvider.models.forEach { m ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(m.label, style = MaterialTheme.typography.bodyLarge)
+                                        Text(m.note, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                                    }
+                                },
+                                trailingIcon = if (m.id == selected.id) {
+                                    { Icon(Icons.Filled.Check, null, tint = c.primary) }
+                                } else {
+                                    null
+                                },
+                                onClick = { scope.launch { store.setModel(m.id) }; expanded = false },
+                            )
+                        }
+                    }
                 }
             }
 
@@ -139,6 +170,30 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
                     colors = ButtonDefaults.buttonColors(containerColor = c.primary, contentColor = c.onPrimary),
                     shape = RoundedCornerShape(14.dp),
                 ) { Text(if (keySaved) "Saved ✓" else "Save key") }
+            }
+
+            Section("Local model") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Use a local model", style = MaterialTheme.typography.titleSmall, color = c.onBackground)
+                        Text("Ollama, LM Studio, llama.cpp…", style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                    }
+                    Switch(checked = useLocal, onCheckedChange = { scope.launch { store.setUseLocal(it) } })
+                }
+                if (useLocal) {
+                    Spacer(Modifier.height(14.dp))
+                    FieldLabel("Server URL")
+                    SettingField(localUrl, { localUrl = it; scope.launch { store.setLocalUrl(it) } }, "http://10.0.0.2:11434", singleLine = true)
+                    Spacer(Modifier.height(14.dp))
+                    FieldLabel("Model name")
+                    SettingField(localModel, { localModel = it; scope.launch { store.setLocalModel(it) } }, "e.g. llama3.2, gemma2, qwen2.5", singleLine = true)
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "On a PC: run Ollama or LM Studio and enter your computer's IP. On the phone: run it in Termux and use 127.0.0.1. Both must be on the same Wi-Fi, with the server bound to 0.0.0.0.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.onSurfaceVariant,
+                    )
+                }
             }
 
             Section("Data") {

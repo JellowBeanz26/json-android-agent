@@ -16,9 +16,13 @@ object GeminiProvider : LlmProvider {
     override val id = "google"
     override val label = "Google Gemini"
     override val models = listOf(
-        ModelOption("gemini-2.5-flash", "Flash", "Fast, great for everyday chat"),
-        ModelOption("gemini-2.5-pro", "Pro", "Most capable, slower & deeper"),
-        ModelOption("gemini-2.0-flash", "Flash 2.0", "Lightweight and quick"),
+        ModelOption("gemini-2.5-flash", "Gemini 2.5 Flash", "Free tier · fast · ~\$0.30 / 1M out"),
+        ModelOption("gemini-2.5-pro", "Gemini 2.5 Pro", "Paid · most capable · ~\$10 / 1M out"),
+        ModelOption("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite", "Free tier · cheapest & fastest"),
+        ModelOption("gemini-2.0-flash", "Gemini 2.0 Flash", "Free tier · fast"),
+        ModelOption("gemini-2.0-flash-lite", "Gemini 2.0 Flash-Lite", "Free tier · cheapest"),
+        ModelOption("gemini-1.5-pro", "Gemini 1.5 Pro", "Paid · long context (legacy)"),
+        ModelOption("gemini-1.5-flash", "Gemini 1.5 Flash", "Free tier · legacy"),
     )
 
     override fun stream(apiKey: String, model: String, system: String, history: List<Message>): Flow<LlmChunk> = flow {

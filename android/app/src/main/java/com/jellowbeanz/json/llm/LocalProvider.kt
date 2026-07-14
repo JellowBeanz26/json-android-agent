@@ -11,17 +11,16 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** OpenAI (Chat Completions, SSE). No exposed reasoning stream, so we prompt for visible <think>. */
-object OpenAiProvider : LlmProvider {
-    override val id = "openai"
-    override val label = "OpenAI"
-    override val models = listOf(
-        ModelOption("gpt-4o", "GPT-4o", "Paid · \$2.50 / \$10 per 1M"),
-        ModelOption("gpt-4o-mini", "GPT-4o mini", "Paid · \$0.15 / \$0.60 per 1M · cheap"),
-        ModelOption("gpt-4.1", "GPT-4.1", "Paid · capable"),
-        ModelOption("gpt-4.1-mini", "GPT-4.1 mini", "Paid · cheap"),
-        ModelOption("o4-mini", "o4-mini", "Paid · reasoning model"),
-    )
+/**
+ * A local / self-hosted model over an OpenAI-compatible API — Ollama, LM Studio, llama.cpp, etc.,
+ * running on a PC on the same network or on the phone itself (via Termux). Configured by base URL.
+ */
+class LocalProvider(baseUrl: String) : LlmProvider {
+    override val id = "local"
+    override val label = "Local model"
+    override val models = emptyList<ModelOption>() // model name is free-text for local servers
+
+    private val endpoint = normalize(baseUrl)
 
     override fun stream(apiKey: String, model: String, system: String, history: List<Message>): Flow<LlmChunk> = flow {
         val messages = JSONArray()
@@ -34,23 +33,22 @@ object OpenAiProvider : LlmProvider {
             )
         }
         val body = JSONObject()
-            .put("model", model)
+            .put("model", model.ifBlank { "local" })
             .put("messages", messages)
             .put("stream", true)
             .toString()
 
-        val request = Request.Builder()
-            .url("https://api.openai.com/v1/chat/completions")
-            .addHeader("Authorization", "Bearer $apiKey")
+        val builder = Request.Builder()
+            .url(endpoint)
             .addHeader("content-type", "application/json")
             .addHeader("Accept-Encoding", "identity")
-            .post(body.toRequestBody("application/json".toMediaType()))
-            .build()
+        if (apiKey.isNotBlank()) builder.addHeader("Authorization", "Bearer $apiKey") // some servers want a token
+        builder.post(body.toRequestBody("application/json".toMediaType()))
 
         val raw = StringBuilder()
-        llmHttp.newCall(request).execute().use { resp ->
+        llmHttp.newCall(builder.build()).execute().use { resp ->
             if (!resp.isSuccessful) {
-                emit(LlmChunk("", "Couldn't reach OpenAI (error ${resp.code}). Check your API key in Settings."))
+                emit(LlmChunk("", "Couldn't reach the local model (error ${resp.code}). Check the URL in Settings."))
                 return@use
             }
             val source = resp.body?.source() ?: return@use
@@ -69,4 +67,16 @@ object OpenAiProvider : LlmProvider {
             }
         }
     }.flowOn(Dispatchers.IO)
+
+    companion object {
+        /** Accepts host:port, .../v1, or a full .../chat/completions URL. */
+        private fun normalize(base: String): String {
+            val u = base.trim().removeSuffix("/")
+            return when {
+                u.endsWith("/chat/completions") -> u
+                u.endsWith("/v1") -> "$u/chat/completions"
+                else -> "$u/v1/chat/completions"
+            }
+        }
+    }
 }

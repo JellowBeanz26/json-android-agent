@@ -1,6 +1,7 @@
 package com.jellowbeanz.json.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -21,6 +22,9 @@ data class Settings(
     val about: String = "",
     val style: String = "default",
     val instructions: String = "",
+    val useLocal: Boolean = false,
+    val localUrl: String = "",
+    val localModel: String = "",
 )
 
 /** DataStore-backed preferences: theme, model, personalization, style. */
@@ -32,6 +36,9 @@ class SettingsStore(private val context: Context) {
     val about: Flow<String> = context.dataStore.data.map { it[ABOUT] ?: "" }
     val style: Flow<String> = context.dataStore.data.map { it[STYLE] ?: "default" }
     val instructions: Flow<String> = context.dataStore.data.map { it[INSTRUCTIONS] ?: "" }
+    val useLocal: Flow<Boolean> = context.dataStore.data.map { it[USE_LOCAL] ?: false }
+    val localUrl: Flow<String> = context.dataStore.data.map { it[LOCAL_URL] ?: "" }
+    val localModel: Flow<String> = context.dataStore.data.map { it[LOCAL_MODEL] ?: "" }
 
     suspend fun setTheme(v: String) = context.dataStore.edit { it[THEME] = v }
     suspend fun setModel(v: String) = context.dataStore.edit { it[MODEL] = v }
@@ -39,6 +46,9 @@ class SettingsStore(private val context: Context) {
     suspend fun setAbout(v: String) = context.dataStore.edit { it[ABOUT] = v }
     suspend fun setStyle(v: String) = context.dataStore.edit { it[STYLE] = v }
     suspend fun setInstructions(v: String) = context.dataStore.edit { it[INSTRUCTIONS] = v }
+    suspend fun setUseLocal(v: Boolean) = context.dataStore.edit { it[USE_LOCAL] = v }
+    suspend fun setLocalUrl(v: String) = context.dataStore.edit { it[LOCAL_URL] = v }
+    suspend fun setLocalModel(v: String) = context.dataStore.edit { it[LOCAL_MODEL] = v }
 
     /** One consistent read for building an outgoing request. */
     suspend fun snapshot(): Settings {
@@ -50,6 +60,9 @@ class SettingsStore(private val context: Context) {
             about = p[ABOUT] ?: "",
             style = p[STYLE] ?: "default",
             instructions = p[INSTRUCTIONS] ?: "",
+            useLocal = p[USE_LOCAL] ?: false,
+            localUrl = p[LOCAL_URL] ?: "",
+            localModel = p[LOCAL_MODEL] ?: "",
         )
     }
 
@@ -62,6 +75,9 @@ class SettingsStore(private val context: Context) {
         private val ABOUT = stringPreferencesKey("about_you")
         private val STYLE = stringPreferencesKey("style")
         private val INSTRUCTIONS = stringPreferencesKey("instructions")
+        private val USE_LOCAL = booleanPreferencesKey("use_local")
+        private val LOCAL_URL = stringPreferencesKey("local_url")
+        private val LOCAL_MODEL = stringPreferencesKey("local_model")
 
         val STYLES = listOf(
             StyleOption("default", "Default", ""),
