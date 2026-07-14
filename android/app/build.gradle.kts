@@ -59,4 +59,7 @@ dependencies {
 
     // DataStore — settings & preferences
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // OkHttp — reliable streaming (SSE) for live token-by-token responses
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

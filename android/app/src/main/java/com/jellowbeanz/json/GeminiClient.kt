@@ -2,89 +2,75 @@ package com.jellowbeanz.json
 
 import com.jellowbeanz.json.data.Message
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
+import java.util.concurrent.TimeUnit
 
-/** Calls Gemini from the phone (Vertex AI generateContent endpoint), with memory + reasoning. */
+/** Streams Gemini's reply token-by-token from the phone (Vertex AI streamGenerateContent, SSE). */
 object GeminiClient {
 
-    /** The model's answer plus its (optional) chain-of-thought summary. */
-    data class ChatReply(val text: String, val reasoning: String)
-
     /**
-     * Sends the whole [history] and asks the model to include a summary of its thinking.
+     * Emits raw text chunks as they are generated. The model is prompted to write its reasoning
+     * first (inside <think></think>), so the reasoning streams live before the answer.
      */
-    suspend fun chat(apiKey: String, model: String, system: String, history: List<Message>): ChatReply =
-        withContext(Dispatchers.IO) {
-            try {
-                val contents = JSONArray()
-                for (m in history) {
-                    val role = if (m.role == "assistant") "model" else "user"
-                    contents.put(
-                        JSONObject()
-                            .put("role", role)
-                            .put("parts", JSONArray().put(JSONObject().put("text", m.text))),
-                    )
-                }
-                val body = JSONObject()
-                    .put(
-                        "systemInstruction",
-                        JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))),
-                    )
-                    .put("contents", contents)
-                    .put(
-                        "generationConfig",
-                        JSONObject().put("thinkingConfig", JSONObject().put("includeThoughts", true)),
-                    )
-                    .toString()
+    fun chatStream(apiKey: String, model: String, system: String, history: List<Message>): Flow<String> = flow {
+        val contents = JSONArray()
+        for (m in history) {
+            val role = if (m.role == "assistant") "model" else "user"
+            contents.put(
+                JSONObject().put("role", role).put("parts", JSONArray().put(JSONObject().put("text", m.text))),
+            )
+        }
+        val body = JSONObject()
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+            .put("contents", contents)
+            // Disable the model's own hidden thinking; we want it to *write* its reasoning so it streams.
+            .put("generationConfig", JSONObject().put("thinkingConfig", JSONObject().put("thinkingBudget", 0)))
+            .toString()
 
-                val endpoint =
-                    "https://aiplatform.googleapis.com/v1/publishers/google/models/$model:generateContent"
-                val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    setRequestProperty("Content-Type", "application/json")
-                    setRequestProperty("x-goog-api-key", apiKey)
-                    connectTimeout = 20000
-                    readTimeout = 60000
-                }
-                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        val endpoint =
+            "https://aiplatform.googleapis.com/v1/publishers/google/models/$model:streamGenerateContent?alt=sse"
+        val request = Request.Builder()
+            .url(endpoint)
+            .addHeader("x-goog-api-key", apiKey)
+            .addHeader("Accept-Encoding", "identity") // no gzip, so lines arrive live
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .build()
 
-                val code = conn.responseCode
-                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-                val response = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                if (code !in 200..299) {
-                    return@withContext ChatReply(
-                        "Couldn't reach the model (error $code). Check your API key in Settings.",
-                        "",
-                    )
+        streamClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                emit("Couldn't reach the model (error ${response.code}). Check your API key in Settings.")
+                return@use
+            }
+            val source = response.body?.source() ?: return@use
+            while (true) {
+                val line = source.readUtf8Line() ?: break
+                if (!line.startsWith("data:")) continue
+                val json = line.substring(5).trim()
+                if (json.isEmpty()) continue
+                val parts = runCatching {
+                    JSONObject(json).optJSONArray("candidates")?.getJSONObject(0)
+                        ?.optJSONObject("content")?.optJSONArray("parts")
+                }.getOrNull() ?: continue
+                for (i in 0 until parts.length()) {
+                    val t = parts.getJSONObject(i).optString("text")
+                    if (t.isNotEmpty()) emit(t)
                 }
-                parseReply(response)
-            } catch (e: Exception) {
-                ChatReply("Something went wrong: ${e.message ?: "request failed"}", "")
             }
         }
+    }.flowOn(Dispatchers.IO)
 
-    private fun parseReply(response: String): ChatReply {
-        val candidates = JSONObject(response).optJSONArray("candidates")
-            ?: return ChatReply("(no response)", "")
-        if (candidates.length() == 0) return ChatReply("(no response)", "")
-        val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts")
-            ?: return ChatReply("(no response)", "")
-        val answer = StringBuilder()
-        val thoughts = StringBuilder()
-        for (i in 0 until parts.length()) {
-            val part = parts.getJSONObject(i)
-            val t = part.optString("text")
-            if (t.isEmpty()) continue
-            if (part.optBoolean("thought", false)) thoughts.append(t) else answer.append(t)
-        }
-        return ChatReply(
-            answer.toString().trim().ifBlank { "(no response)" },
-            thoughts.toString().trim(),
-        )
+    private val streamClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .build()
     }
 }

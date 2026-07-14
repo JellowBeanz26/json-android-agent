@@ -85,7 +85,12 @@ class SettingsStore(private val context: Context) {
             val sb = StringBuilder(
                 "You are Json, a helpful AI assistant living on the user's Android phone. " +
                     "Reply in the user's language. Be clear and natural. " +
-                    "Use markdown (bold, lists, fenced code blocks) when it improves readability.",
+                    "Use markdown (bold, lists, fenced code blocks) when it improves readability. " +
+                    "For every substantive message you MUST begin your reply with your reasoning wrapped " +
+                    "in <think> and </think> tags — a few short first-person sentences, in the user's " +
+                    "language, about how you'll answer — then write the final answer after </think>. " +
+                    "Never skip the <think> block for a real question; only a bare greeting like \"hi\" may skip it. " +
+                    "Example: <think>The user wants X. I'll cover Y and Z.</think>Here is the answer…",
             )
             if (s.userName.isNotBlank()) sb.append("\nThe user's name is ${s.userName.trim()}.")
             if (s.about.isNotBlank()) sb.append("\nAbout the user: ${s.about.trim()}")

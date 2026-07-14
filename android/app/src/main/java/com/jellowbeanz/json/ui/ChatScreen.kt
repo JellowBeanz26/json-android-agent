@@ -1,5 +1,6 @@
 package com.jellowbeanz.json.ui
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -21,8 +22,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
@@ -39,13 +38,13 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jellowbeanz.json.ChatViewModel
 import com.jellowbeanz.json.KeyStore
 import com.jellowbeanz.json.R
+import com.jellowbeanz.json.Streaming
 import com.jellowbeanz.json.data.Conversation
 import kotlinx.coroutines.launch
 
@@ -59,14 +58,14 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
     val conversations by vm.conversations.collectAsStateWithLifecycle()
     val currentId by vm.currentId.collectAsStateWithLifecycle()
     val messages by vm.messages.collectAsStateWithLifecycle()
-    val thinking by vm.thinking.collectAsStateWithLifecycle()
+    val streaming by vm.streaming.collectAsStateWithLifecycle()
 
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val imeVisible = WindowInsets.isImeVisible
 
-    LaunchedEffect(messages.size, thinking, imeVisible) {
-        val total = messages.size + if (thinking) 1 else 0
+    LaunchedEffect(messages.size, streaming, imeVisible) {
+        val total = messages.size + if (streaming.active) 1 else 0
         if (total > 0) listState.animateScrollToItem(total - 1)
     }
 
@@ -104,7 +103,7 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                     .fillMaxSize(),
             ) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    if (messages.isEmpty() && !thinking) {
+                    if (messages.isEmpty() && !streaming.active) {
                         EmptyState(onPrompt = { input = it })
                     } else {
                         LazyColumn(
@@ -114,9 +113,9 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             items(messages, key = { it.id }) { msg ->
-                                if (msg.role == "user") UserBubble(msg.text) else AssistantMessage(msg.text, msg.reasoning)
+                                if (msg.role == "user") UserBubble(msg.text) else AssistantMessage(msg.text)
                             }
-                            if (thinking) item { ThinkingIndicator() }
+                            if (streaming.active) item { StreamingMessage(streaming) }
                         }
                     }
                 }
@@ -191,7 +190,6 @@ private fun HistoryDrawer(
                 modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 12.dp),
             )
 
-            // New chat
             Surface(
                 color = c.surface,
                 shape = RoundedCornerShape(12.dp),
@@ -208,7 +206,6 @@ private fun HistoryDrawer(
                 }
             }
 
-            // Search
             Surface(
                 color = c.surface,
                 shape = RoundedCornerShape(12.dp),
@@ -351,9 +348,7 @@ private fun RenameDialog(conv: Conversation, onDismiss: () -> Unit, onConfirm: (
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Rename chat") },
-        text = {
-            OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true)
-        },
+        text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true) },
         confirmButton = { TextButton(onClick = { onConfirm(text) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -399,11 +394,7 @@ private fun EmptyState(onPrompt: (String) -> Unit) {
             )
         }
         Spacer(Modifier.height(20.dp))
-        Text(
-            "How can I help?",
-            style = MaterialTheme.typography.headlineSmall,
-            color = c.onBackground,
-        )
+        Text("How can I help?", style = MaterialTheme.typography.headlineSmall, color = c.onBackground)
         Spacer(Modifier.height(28.dp))
         suggestions.forEach { s ->
             Surface(
@@ -445,17 +436,13 @@ private fun UserBubble(text: String) {
 }
 
 @Composable
-private fun AssistantMessage(text: String, reasoning: String) {
+private fun AssistantMessage(text: String) {
     val c = MaterialTheme.colorScheme
     val clipboard = LocalClipboardManager.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         JsonMark()
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            if (reasoning.isNotBlank()) {
-                ReasoningSection(reasoning)
-                Spacer(Modifier.height(8.dp))
-            }
             MarkdownText(text, color = c.onBackground, modifier = Modifier.padding(top = 3.dp))
             IconButton(
                 onClick = { clipboard.setText(AnnotatedString(text)) },
@@ -467,56 +454,86 @@ private fun AssistantMessage(text: String, reasoning: String) {
     }
 }
 
+/** The message being generated: live reasoning first, then the answer streams in (reasoning fades away). */
 @Composable
-private fun ReasoningSection(reasoning: String) {
+private fun StreamingMessage(state: Streaming) {
     val c = MaterialTheme.colorScheme
-    var expanded by remember { mutableStateOf(false) }
-    Column {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable { expanded = !expanded }
-                .padding(vertical = 4.dp, horizontal = 2.dp),
-        ) {
-            Icon(painterResource(R.drawable.ic_json_spark), null, tint = c.primary, modifier = Modifier.size(14.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("Thought process", style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
-            Icon(
-                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                contentDescription = null,
-                tint = c.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        if (expanded) {
-            Surface(color = c.surfaceVariant, shape = RoundedCornerShape(10.dp), modifier = Modifier.padding(top = 4.dp)) {
-                MarkdownText(reasoning, color = c.onSurfaceVariant, modifier = Modifier.padding(12.dp))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        JsonMark()
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            if (state.answer.isBlank()) {
+                LiveThinking(state.reasoning)
+            } else {
+                MarkdownText(state.answer, color = c.onBackground, modifier = Modifier.padding(top = 3.dp))
             }
         }
     }
 }
 
 @Composable
-private fun ThinkingIndicator() {
+private fun LiveThinking(reasoning: String) {
     val c = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        JsonMark()
-        Spacer(Modifier.width(12.dp))
-        val transition = rememberInfiniteTransition(label = "thinking")
-        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            repeat(3) { i ->
-                val alpha by transition.animateFloat(
-                    initialValue = 0.25f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(600, delayMillis = i * 160),
-                        repeatMode = RepeatMode.Reverse,
-                    ),
-                    label = "dot$i",
-                )
-                Box(Modifier.size(7.dp).clip(CircleShape).background(c.onSurfaceVariant.copy(alpha = alpha)))
+    Column(Modifier.padding(top = 3.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val transition = rememberInfiniteTransition(label = "thinking")
+            val alpha by transition.animateFloat(
+                initialValue = 0.4f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(tween(850), RepeatMode.Reverse),
+                label = "pulse",
+            )
+            Text("Thinking", style = MaterialTheme.typography.labelLarge, color = c.primary.copy(alpha = alpha))
+            Spacer(Modifier.width(8.dp))
+            ThinkingDots()
+        }
+        val lines = remember(reasoning) {
+            reasoning.split(Regex("(?<=[.!?])\\s+"))
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+        }
+        if (lines.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            val shown = lines.takeLast(3)
+            Column(
+                modifier = Modifier.animateContentSize(),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                shown.forEachIndexed { i, line ->
+                    val a = when (shown.size - 1 - i) {
+                        0 -> 1f
+                        1 -> 0.5f
+                        else -> 0.28f
+                    }
+                    Text(
+                        line,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.onSurfaceVariant.copy(alpha = a),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun ThinkingDots() {
+    val c = MaterialTheme.colorScheme
+    val transition = rememberInfiniteTransition(label = "dots")
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        repeat(3) { i ->
+            val alpha by transition.animateFloat(
+                initialValue = 0.25f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(600, delayMillis = i * 160),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "dot$i",
+            )
+            Box(Modifier.size(6.dp).clip(CircleShape).background(c.onSurfaceVariant.copy(alpha = alpha)))
         }
     }
 }
