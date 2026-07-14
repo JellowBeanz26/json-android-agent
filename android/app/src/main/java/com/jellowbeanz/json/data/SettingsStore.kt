@@ -10,9 +10,6 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore("json_settings")
 
-/** A model the user can pick. */
-data class ModelOption(val id: String, val label: String, val note: String)
-
 /** A response-style preset. */
 data class StyleOption(val id: String, val label: String, val prompt: String)
 
@@ -66,12 +63,6 @@ class SettingsStore(private val context: Context) {
         private val STYLE = stringPreferencesKey("style")
         private val INSTRUCTIONS = stringPreferencesKey("instructions")
 
-        val MODELS = listOf(
-            ModelOption("gemini-2.5-flash", "Flash", "Fast, great for everyday chat"),
-            ModelOption("gemini-2.5-pro", "Pro", "Most capable, slower & deeper"),
-            ModelOption("gemini-2.0-flash", "Flash 2.0", "Lightweight and quick"),
-        )
-
         val STYLES = listOf(
             StyleOption("default", "Default", ""),
             StyleOption("concise", "Concise", "Keep answers short and to the point."),
@@ -85,12 +76,7 @@ class SettingsStore(private val context: Context) {
             val sb = StringBuilder(
                 "You are Json, a helpful AI assistant living on the user's Android phone. " +
                     "Reply in the user's language. Be clear and natural. " +
-                    "Use markdown (bold, lists, fenced code blocks) when it improves readability. " +
-                    "For every substantive message you MUST begin your reply with your reasoning wrapped " +
-                    "in <think> and </think> tags — a few short first-person sentences, in the user's " +
-                    "language, about how you'll answer — then write the final answer after </think>. " +
-                    "Never skip the <think> block for a real question; only a bare greeting like \"hi\" may skip it. " +
-                    "Example: <think>The user wants X. I'll cover Y and Z.</think>Here is the answer…",
+                    "Use markdown (bold, lists, fenced code blocks) when it improves readability.",
             )
             if (s.userName.isNotBlank()) sb.append("\nThe user's name is ${s.userName.trim()}.")
             if (s.about.isNotBlank()) sb.append("\nAbout the user: ${s.about.trim()}")

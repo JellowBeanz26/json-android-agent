@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import com.jellowbeanz.json.KeyStore
 import com.jellowbeanz.json.data.SettingsStore
 import com.jellowbeanz.json.detectProvider
+import com.jellowbeanz.json.llm.GeminiProvider
+import com.jellowbeanz.json.llm.Llm
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -92,8 +94,9 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
                 }
             }
 
-            Section("Model") {
-                SettingsStore.MODELS.forEachIndexed { i, m ->
+            val activeProvider = remember(key) { Llm.forKey(key) ?: GeminiProvider }
+            Section("Model · ${activeProvider.label}") {
+                activeProvider.models.forEachIndexed { i, m ->
                     Row(
                         Modifier.fillMaxWidth().clickable { scope.launch { store.setModel(m.id) } }.padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -104,7 +107,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
                         }
                         RadioButton(selected = model == m.id, onClick = { scope.launch { store.setModel(m.id) } })
                     }
-                    if (i < SettingsStore.MODELS.lastIndex) HorizontalDivider(color = c.outline.copy(alpha = 0.4f))
+                    if (i < activeProvider.models.lastIndex) HorizontalDivider(color = c.outline.copy(alpha = 0.4f))
                 }
             }
 

@@ -1,4 +1,4 @@
-package com.jellowbeanz.json
+package com.jellowbeanz.json.llm
 
 import com.jellowbeanz.json.data.Message
 import kotlinx.coroutines.Dispatchers
@@ -6,32 +6,34 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
-/** Streams Gemini's reply token-by-token from the phone (Vertex AI streamGenerateContent, SSE). */
-object GeminiClient {
+/** Google Gemini via Vertex AI Express (SSE). No native streamed reasoning, so we prompt for <think>. */
+object GeminiProvider : LlmProvider {
+    override val id = "google"
+    override val label = "Google Gemini"
+    override val models = listOf(
+        ModelOption("gemini-2.5-flash", "Flash", "Fast, great for everyday chat"),
+        ModelOption("gemini-2.5-pro", "Pro", "Most capable, slower & deeper"),
+        ModelOption("gemini-2.0-flash", "Flash 2.0", "Lightweight and quick"),
+    )
 
-    /**
-     * Emits raw text chunks as they are generated. The model is prompted to write its reasoning
-     * first (inside <think></think>), so the reasoning streams live before the answer.
-     */
-    fun chatStream(apiKey: String, model: String, system: String, history: List<Message>): Flow<String> = flow {
+    override fun stream(apiKey: String, model: String, system: String, history: List<Message>): Flow<LlmChunk> = flow {
         val contents = JSONArray()
         for (m in history) {
             val role = if (m.role == "assistant") "model" else "user"
-            contents.put(
-                JSONObject().put("role", role).put("parts", JSONArray().put(JSONObject().put("text", m.text))),
-            )
+            contents.put(JSONObject().put("role", role).put("parts", JSONArray().put(JSONObject().put("text", m.text))))
         }
         val body = JSONObject()
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+            .put(
+                "systemInstruction",
+                JSONObject().put("parts", JSONArray().put(JSONObject().put("text", "$system\n\n$THINK_INSTRUCTION"))),
+            )
             .put("contents", contents)
-            // Disable the model's own hidden thinking; we want it to *write* its reasoning so it streams.
+            // Disable hidden thinking so the visible <think> reasoning streams immediately.
             .put("generationConfig", JSONObject().put("thinkingConfig", JSONObject().put("thinkingBudget", 0)))
             .toString()
 
@@ -40,16 +42,17 @@ object GeminiClient {
         val request = Request.Builder()
             .url(endpoint)
             .addHeader("x-goog-api-key", apiKey)
-            .addHeader("Accept-Encoding", "identity") // no gzip, so lines arrive live
+            .addHeader("Accept-Encoding", "identity")
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
 
-        streamClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                emit("Couldn't reach the model (error ${response.code}). Check your API key in Settings.")
+        val raw = StringBuilder()
+        llmHttp.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                emit(LlmChunk("", "Couldn't reach Gemini (error ${resp.code}). Check your API key in Settings."))
                 return@use
             }
-            val source = response.body?.source() ?: return@use
+            val source = resp.body?.source() ?: return@use
             while (true) {
                 val line = source.readUtf8Line() ?: break
                 if (!line.startsWith("data:")) continue
@@ -61,16 +64,11 @@ object GeminiClient {
                 }.getOrNull() ?: continue
                 for (i in 0 until parts.length()) {
                     val t = parts.getJSONObject(i).optString("text")
-                    if (t.isNotEmpty()) emit(t)
+                    if (t.isNotEmpty()) raw.append(t)
                 }
+                val (r, a) = splitThink(raw.toString())
+                emit(LlmChunk(r, a))
             }
         }
     }.flowOn(Dispatchers.IO)
-
-    private val streamClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
-            .build()
-    }
 }
