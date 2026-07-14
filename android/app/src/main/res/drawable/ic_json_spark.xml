@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Json's four-point spark (tinted at use site) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,24 C57,45 63,51 84,54 C63,57 57,63 54,84 C51,63 45,57 24,54 C45,51 51,45 54,24 Z" />
+</vector>

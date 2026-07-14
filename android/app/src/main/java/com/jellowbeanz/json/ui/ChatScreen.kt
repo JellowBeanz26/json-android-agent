@@ -17,101 +17,137 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.jellowbeanz.json.GeminiClient
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jellowbeanz.json.ChatViewModel
 import com.jellowbeanz.json.KeyStore
+import com.jellowbeanz.json.R
+import com.jellowbeanz.json.data.Conversation
 import kotlinx.coroutines.launch
 
-enum class Role { USER, ASSISTANT, ACTION, THINKING }
-data class Message(val role: Role, val text: String)
-
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun ChatScreen(onOpenSettings: () -> Unit) {
+fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
-    val messages = remember {
-        mutableStateListOf(
-            Message(Role.ASSISTANT, "Hi — I'm Json. Ask me anything, or tell me what to do on your phone."),
-        )
-    }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+
+    val conversations by vm.conversations.collectAsStateWithLifecycle()
+    val currentId by vm.currentId.collectAsStateWithLifecycle()
+    val messages by vm.messages.collectAsStateWithLifecycle()
+    val thinking by vm.thinking.collectAsStateWithLifecycle()
+
     var input by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val imeVisible = WindowInsets.isImeVisible
 
-    // keep the newest message in view
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    LaunchedEffect(messages.size, thinking, imeVisible) {
+        val total = messages.size + if (thinking) 1 else 0
+        if (total > 0) listState.animateScrollToItem(total - 1)
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = { JsonTopBar(onOpenSettings) },
-    ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                items(messages) { msg ->
-                    when (msg.role) {
-                        Role.USER -> UserBubble(msg.text)
-                        Role.ASSISTANT -> AssistantMessage(msg.text)
-                        Role.ACTION -> ActionCard(msg.text)
-                        Role.THINKING -> ThinkingIndicator()
-                    }
-                }
-            }
-            InputBar(
-                value = input,
-                onValueChange = { input = it },
-                onSend = {
-                    val text = input.trim()
-                    if (text.isNotBlank()) {
-                        input = ""
-                        messages.add(Message(Role.USER, text))
-                        val key = KeyStore.get(context)
-                        if (key.isBlank()) {
-                            messages.add(
-                                Message(
-                                    Role.ASSISTANT,
-                                    "I need an API key first — tap the settings icon (top right) to add one.",
-                                ),
-                            )
-                        } else {
-                            val thinking = Message(Role.THINKING, "")
-                            messages.add(thinking)
-                            scope.launch {
-                                val reply = GeminiClient.ask(key, text)
-                                messages.remove(thinking)
-                                messages.add(Message(Role.ASSISTANT, reply))
-                            }
-                        }
-                    }
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            HistoryDrawer(
+                conversations = conversations,
+                currentId = currentId,
+                onNew = { vm.newChat(); scope.launch { drawerState.close() } },
+                onSelect = { vm.select(it); scope.launch { drawerState.close() } },
+                onRename = { c, title -> vm.rename(c.id, title) },
+                onTogglePin = { vm.togglePin(it) },
+                onDelete = { vm.delete(it.id) },
+                onSettings = {
+                    scope.launch { drawerState.close() }
+                    onOpenSettings()
                 },
             )
+        },
+    ) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                JsonTopBar(
+                    onMenu = { scope.launch { drawerState.open() } },
+                    onNewChat = { vm.newChat() },
+                )
+            },
+        ) { padding ->
+            Column(
+                Modifier
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+                    .fillMaxSize(),
+            ) {
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    if (messages.isEmpty() && !thinking) {
+                        EmptyState(onPrompt = { input = it })
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            items(messages, key = { it.id }) { msg ->
+                                if (msg.role == "user") UserBubble(msg.text) else AssistantMessage(msg.text)
+                            }
+                            if (thinking) item { ThinkingIndicator() }
+                        }
+                    }
+                }
+                InputBar(
+                    value = input,
+                    onValueChange = { input = it },
+                    onSend = {
+                        val t = input.trim()
+                        if (t.isNotBlank()) {
+                            input = ""
+                            vm.send(t, KeyStore.get(context))
+                        }
+                    },
+                )
+            }
         }
     }
 }
 
+// ---------- top bar ----------
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun JsonTopBar(onOpenSettings: () -> Unit) {
+private fun JsonTopBar(onMenu: () -> Unit, onNewChat: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Column {
         TopAppBar(
             title = { Text("Json", style = MaterialTheme.typography.titleLarge, color = c.onBackground) },
+            navigationIcon = {
+                IconButton(onClick = onMenu) {
+                    Icon(Icons.Filled.Menu, contentDescription = "Conversations", tint = c.onBackground)
+                }
+            },
             actions = {
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = c.onSurfaceVariant)
+                IconButton(onClick = onNewChat) {
+                    Icon(Icons.Filled.Add, contentDescription = "New chat", tint = c.onBackground)
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = c.background),
@@ -119,6 +155,270 @@ private fun JsonTopBar(onOpenSettings: () -> Unit) {
         HorizontalDivider(color = c.outline.copy(alpha = 0.6f))
     }
 }
+
+// ---------- history drawer ----------
+
+@Composable
+private fun HistoryDrawer(
+    conversations: List<Conversation>,
+    currentId: Long?,
+    onNew: () -> Unit,
+    onSelect: (Long) -> Unit,
+    onRename: (Conversation, String) -> Unit,
+    onTogglePin: (Conversation) -> Unit,
+    onDelete: (Conversation) -> Unit,
+    onSettings: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    var query by remember { mutableStateOf("") }
+    var renaming by remember { mutableStateOf<Conversation?>(null) }
+    var deleting by remember { mutableStateOf<Conversation?>(null) }
+    val filtered = remember(conversations, query) {
+        if (query.isBlank()) conversations else conversations.filter { it.title.contains(query, ignoreCase = true) }
+    }
+
+    ModalDrawerSheet(drawerContainerColor = c.background, modifier = Modifier.fillMaxWidth(0.86f)) {
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+            Text(
+                "Json",
+                style = MaterialTheme.typography.titleLarge,
+                color = c.onBackground,
+                modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 12.dp),
+            )
+
+            // New chat
+            Surface(
+                color = c.surface,
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, c.outline),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).clickable(onClick = onNew),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                ) {
+                    Icon(Icons.Filled.Add, null, tint = c.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("New chat", style = MaterialTheme.typography.titleSmall, color = c.onBackground)
+                }
+            }
+
+            // Search
+            Surface(
+                color = c.surface,
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, c.outline),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Filled.Search, null, tint = c.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Box(Modifier.weight(1f)) {
+                        if (query.isEmpty()) {
+                            Text("Search", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+                        }
+                        BasicTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = c.onBackground),
+                            cursorBrush = SolidColor(c.primary),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                items(filtered, key = { it.id }) { conv ->
+                    ConversationRow(
+                        conv = conv,
+                        selected = conv.id == currentId,
+                        onClick = { onSelect(conv.id) },
+                        onRename = { renaming = conv },
+                        onTogglePin = { onTogglePin(conv) },
+                        onDelete = { deleting = conv },
+                    )
+                }
+                if (filtered.isEmpty()) {
+                    item {
+                        Text(
+                            if (query.isBlank()) "No conversations yet" else "No matches",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = c.onSurfaceVariant,
+                            modifier = Modifier.padding(20.dp),
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(color = c.outline.copy(alpha = 0.6f))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onSettings)
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .navigationBarsPadding(),
+            ) {
+                Icon(Icons.Filled.Settings, null, tint = c.onBackground)
+                Spacer(Modifier.width(14.dp))
+                Text("Settings", style = MaterialTheme.typography.titleSmall, color = c.onBackground)
+            }
+        }
+    }
+
+    renaming?.let { conv ->
+        RenameDialog(conv, onDismiss = { renaming = null }, onConfirm = { onRename(conv, it); renaming = null })
+    }
+    deleting?.let { conv ->
+        DeleteDialog(conv, onDismiss = { deleting = null }, onConfirm = { onDelete(conv); deleting = null })
+    }
+}
+
+@Composable
+private fun ConversationRow(
+    conv: Conversation,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onRename: () -> Unit,
+    onTogglePin: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    var menu by remember { mutableStateOf(false) }
+    Surface(
+        color = if (selected) c.surfaceVariant else Color.Transparent,
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+        ) {
+            if (conv.pinned) {
+                Icon(Icons.Filled.PushPin, null, tint = c.primary, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(
+                conv.title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = c.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+            )
+            Box {
+                IconButton(onClick = { menu = true }) {
+                    Icon(Icons.Filled.MoreVert, "Options", tint = c.onSurfaceVariant)
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (conv.pinned) "Unpin" else "Pin") },
+                        leadingIcon = { Icon(Icons.Filled.PushPin, null) },
+                        onClick = { menu = false; onTogglePin() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        leadingIcon = { Icon(Icons.Filled.Edit, null) },
+                        onClick = { menu = false; onRename() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = c.error) },
+                        onClick = { menu = false; onDelete() },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RenameDialog(conv: Conversation, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var text by remember { mutableStateOf(conv.title) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename chat") },
+        text = {
+            OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true)
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(text) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun DeleteDialog(conv: Conversation, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete chat?") },
+        text = { Text("\"${conv.title}\" will be permanently deleted.") },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Delete", color = c.error) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+// ---------- empty state ----------
+
+@Composable
+private fun EmptyState(onPrompt: (String) -> Unit) {
+    val c = MaterialTheme.colorScheme
+    val suggestions = listOf(
+        "What can you do?",
+        "Draft a text message for me",
+        "Explain a concept simply",
+        "Give me an idea for today",
+    )
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            Modifier.size(64.dp).clip(CircleShape).background(c.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_json_spark),
+                contentDescription = null,
+                tint = c.onPrimary,
+                modifier = Modifier.size(38.dp),
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        Text(
+            "How can I help?",
+            style = MaterialTheme.typography.headlineSmall,
+            color = c.onBackground,
+        )
+        Spacer(Modifier.height(28.dp))
+        suggestions.forEach { s ->
+            Surface(
+                color = c.surface,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, c.outline),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp).clickable { onPrompt(s) },
+            ) {
+                Text(
+                    s,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = c.onBackground,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                )
+            }
+        }
+    }
+}
+
+// ---------- message rows ----------
 
 @Composable
 private fun UserBubble(text: String) {
@@ -155,23 +455,6 @@ private fun AssistantMessage(text: String) {
 }
 
 @Composable
-private fun ActionCard(text: String) {
-    val c = MaterialTheme.colorScheme
-    Row(Modifier.padding(start = 40.dp)) {
-        Surface(color = c.surface, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, c.outline)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-            ) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(c.primary))
-                Spacer(Modifier.width(10.dp))
-                Text(text, style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-@Composable
 private fun ThinkingIndicator() {
     val c = MaterialTheme.colorScheme
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -202,16 +485,23 @@ private fun JsonMark() {
         Modifier.size(28.dp).clip(CircleShape).background(c.primary),
         contentAlignment = Alignment.Center,
     ) {
-        Text("J", style = MaterialTheme.typography.labelLarge, color = c.onPrimary)
+        Icon(
+            painterResource(R.drawable.ic_json_spark),
+            contentDescription = null,
+            tint = c.onPrimary,
+            modifier = Modifier.size(17.dp),
+        )
     }
 }
+
+// ---------- input ----------
 
 @Composable
 private fun InputBar(value: String, onValueChange: (String) -> Unit, onSend: () -> Unit) {
     val c = MaterialTheme.colorScheme
-    Surface(color = c.background) {
+    Surface(color = c.background, modifier = Modifier.imePadding()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding(),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
