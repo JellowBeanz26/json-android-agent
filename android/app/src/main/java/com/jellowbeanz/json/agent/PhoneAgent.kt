@@ -15,12 +15,15 @@ object PhoneAgent {
         model: String,
         userName: String,
         task: String,
+        context: String,
         service: JsonAccessibilityService,
         onAction: suspend (String) -> Unit,
     ): String {
         service.showControlOverlay()
         try {
-            service.waitUntilIdle(quietMs = 300, maxMs = 1200) // let the current screen settle before the first look
+            // Leave the Json app so the agent operates OTHER apps, never its own chat screen.
+            service.press("home")
+            service.waitUntilIdle(quietMs = 400, maxMs = 2000)
             val stoppedMessage =
                 "You stopped me, so I halted here. Everything I did up to this point is above — " +
                     "ask me about any of it, or tell me to continue."
@@ -52,7 +55,7 @@ object PhoneAgent {
                     history.append("   (note: the previous step did not change the screen)\n")
                 }
 
-                val action = AgentBrain.nextAction(apiKey, model, userName, task, screen, history.toString(), notes.toString())
+                val action = AgentBrain.nextAction(apiKey, model, userName, task, context, screen, history.toString(), notes.toString())
                 Logger.d("agent ${step + 1}: ${action.action} ${action.index ?: action.app ?: action.text ?: action.direction ?: ""}")
 
                 if (service.stopRequested) return stoppedMessage

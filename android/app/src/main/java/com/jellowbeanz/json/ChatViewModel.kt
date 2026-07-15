@@ -199,8 +199,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
         _streaming.value = Streaming(active = true)
         val name = settings.snapshot().userName
+        val context = agentContext(convId)
         val summary = try {
-            PhoneAgent.run(apiKey, "gemini-2.5-flash", name, task, service) { desc ->
+            PhoneAgent.run(apiKey, "gemini-2.5-flash", name, task, context, service) { desc ->
                 repo.addMessage(convId, "action", desc, System.currentTimeMillis())
             }
         } catch (e: Exception) {
@@ -210,6 +211,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         _streaming.value = Streaming(active = false)
         repo.addMessage(convId, "assistant", summary, System.currentTimeMillis())
     }
+
+    /** Recent user tasks + Json's replies (not the verbose action log) as background, so "continue" has context. */
+    private suspend fun agentContext(convId: Long): String =
+        repo.rawHistory(convId).dropLast(1)
+            .filter { it.role == "user" || it.role == "assistant" }
+            .takeLast(6)
+            .joinToString("\n") { m ->
+                val who = if (m.role == "user") "User asked" else "Json"
+                "$who: ${m.text.take(400)}"
+            }
 
     private fun titleFrom(text: String): String {
         val firstLine = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: "New chat"

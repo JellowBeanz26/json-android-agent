@@ -44,8 +44,9 @@ object AgentBrain {
             "- {\"action\":\"back\"} or {\"action\":\"home\"}\n" +
             "- {\"action\":\"note\",\"text\":\"...\"} — remember something you READ on screen, to use later (does not touch the phone)\n" +
             "- {\"action\":\"done\",\"summary\":\"what you did, or the answer/summary the user asked for\"} — when the task is complete\n" +
-            "You begin from whatever is already on the screen — NOT necessarily the home screen; look before you act " +
-            "(if the task is a continuation, carry on from here). " +
+            "You start on the phone's home screen — the Json assistant app that gave you this task is now in the " +
+            "background. NEVER operate the Json app itself (its chat, its input box, its Send button); always open " +
+            "the target app with open_app and do the work there. " +
             "Only tap element numbers that appear in the list. To open ANY app, use open_app with its name " +
             "(e.g. {\"action\":\"open_app\",\"app\":\"Calculator\"}) from anywhere — do not hunt for its icon, and use " +
             "home or back to navigate when you need to. " +
@@ -91,6 +92,7 @@ object AgentBrain {
         model: String,
         userName: String,
         task: String,
+        context: String,
         screen: String,
         history: String,
         notes: String,
@@ -98,6 +100,10 @@ object AgentBrain {
         val userText = buildString {
             append("You are operating the phone on behalf of ")
             append(userName.ifBlank { "the user" }).append(" (the sender/owner of this phone).\n\n")
+            if (context.isNotBlank()) {
+                append("EARLIER IN THIS CHAT (for reference — e.g. if the task says \"continue\"):\n")
+                append(context).append("\n\n")
+            }
             append("TASK: ").append(task).append("\n\n")
             if (history.isNotBlank()) append("STEPS SO FAR:\n").append(history).append("\n")
             if (notes.isNotBlank()) append("NOTES YOU'VE TAKEN:\n").append(notes).append("\n")

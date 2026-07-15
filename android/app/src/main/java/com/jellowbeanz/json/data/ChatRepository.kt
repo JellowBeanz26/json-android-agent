@@ -7,6 +7,9 @@ class ChatRepository(private val dao: ChatDao) {
 
     fun messages(id: Long) = dao.messages(id)
 
+    /** All messages as stored (uncollapsed) — used to build lightweight agent context. */
+    suspend fun rawHistory(id: Long): List<Message> = dao.messagesOnce(id)
+
     /**
      * Messages for the model: action/note rows (from an agent run) are treated as assistant content, and
      * consecutive same-role turns are merged — so the model sees a clean alternating transcript AND can
