@@ -52,6 +52,19 @@ import com.jellowbeanz.json.R
 import com.jellowbeanz.json.Streaming
 import com.jellowbeanz.json.data.Conversation
 import kotlinx.coroutines.launch
+import android.app.Activity
+import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.jellowbeanz.json.data.SettingsStore
+import com.jellowbeanz.json.llm.GeminiProvider
+import com.jellowbeanz.json.llm.Llm
+import com.jellowbeanz.json.llm.ModelOption
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -74,6 +87,49 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
     LaunchedEffect(messages.size, streaming, imeVisible) {
         val total = messages.size + if (streaming.active) 1 else 0
         if (total > 0) listState.animateScrollToItem(total - 1)
+    }
+
+    // Model picker data (top models of the active provider) for the input bar.
+    val store = remember { SettingsStore(context) }
+    val modelId by store.model.collectAsStateWithLifecycle(initialValue = SettingsStore.DEFAULT_MODEL)
+    val apiKey = KeyStore.get(context)
+    val provider = remember(apiKey) { Llm.forKey(apiKey) ?: GeminiProvider }
+    val modelLabel = remember(provider, modelId) {
+        provider.models.firstOrNull { it.id == modelId }?.label ?: provider.models.first().label
+    }
+
+    // Voice: text-to-speech for spoken replies + speech-to-text for the mic / voice button.
+    val tts = remember { TextToSpeech(context) { } }
+    DisposableEffect(Unit) { onDispose { tts.stop(); tts.shutdown() } }
+    var autoSendVoice by remember { mutableStateOf(false) }
+    var speakNextReply by remember { mutableStateOf(false) }
+    val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (result.resultCode == Activity.RESULT_OK && !spoken.isNullOrBlank()) {
+            if (autoSendVoice) {
+                speakNextReply = true
+                vm.send(spoken, apiKey)
+            } else {
+                input = if (input.isBlank()) spoken else input.trimEnd() + " " + spoken
+            }
+        }
+        autoSendVoice = false
+    }
+    fun startSpeech(autoSend: Boolean) {
+        autoSendVoice = autoSend
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now")
+        }
+        runCatching { speechLauncher.launch(intent) }
+    }
+    // Read a voice-initiated reply aloud once it's finished streaming.
+    LaunchedEffect(messages.lastOrNull()?.id, streaming.active) {
+        val last = messages.lastOrNull()
+        if (speakNextReply && !streaming.active && last != null && last.role != "user" && last.role != "action") {
+            runCatching { tts.speak(last.text.take(4000), TextToSpeech.QUEUE_FLUSH, null, "reply") }
+            speakNextReply = false
+        }
     }
 
     ModalNavigationDrawer(
@@ -147,9 +203,15 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                         val t = input.trim()
                         if (t.isNotBlank()) {
                             input = ""
-                            vm.send(t, KeyStore.get(context))
+                            vm.send(t, apiKey)
                         }
                     },
+                    modelLabel = modelLabel,
+                    models = provider.models.take(5),
+                    onSelectModel = { id -> scope.launch { store.setModel(id) } },
+                    onMic = { startSpeech(autoSend = false) },
+                    onVoice = { startSpeech(autoSend = true) },
+                    onNewChat = { vm.newChat() },
                 )
             }
         }
@@ -609,34 +671,28 @@ private fun InputBar(
     onSend: () -> Unit,
     agentMode: Boolean,
     onToggleAgent: () -> Unit,
+    modelLabel: String,
+    models: List<ModelOption>,
+    onSelectModel: (String) -> Unit,
+    onMic: () -> Unit,
+    onVoice: () -> Unit,
+    onNewChat: () -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
+    val hasText = value.isNotBlank()
+    var plusMenu by remember { mutableStateOf(false) }
+    var modelMenu by remember { mutableStateOf(false) }
+
     Surface(color = c.background, modifier = Modifier.imePadding()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            shape = RoundedCornerShape(26.dp),
+            color = c.surface,
+            border = BorderStroke(1.dp, if (agentMode) c.primary else c.outline),
         ) {
-            Box(
-                Modifier.size(44.dp).clip(CircleShape)
-                    .background(if (agentMode) c.primary else c.surface)
-                    .clickable(onClick = onToggleAgent),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Filled.PhoneAndroid,
-                    contentDescription = "Control the phone",
-                    tint = if (agentMode) c.onPrimary else c.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Surface(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(24.dp),
-                color = c.surface,
-                border = BorderStroke(1.dp, if (agentMode) c.primary else c.outline),
-            ) {
-                Box(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
+            Column(Modifier.padding(6.dp)) {
+                // Row 1 — the text field.
+                Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
                     if (value.isEmpty()) {
                         Text(
                             if (agentMode) "Tell Json what to do on your phone…" else "Message Json…",
@@ -652,20 +708,91 @@ private fun InputBar(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-            }
-            Spacer(Modifier.width(10.dp))
-            Box(
-                Modifier.size(48.dp).clip(CircleShape).background(c.primary).clickable(onClick = onSend),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
-                    tint = c.onPrimary,
-                    modifier = Modifier.size(20.dp),
-                )
+                // Row 2 — the toolbar: + · model    …    mic · voice/send.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        ToolButton(Icons.Filled.Add, "More options") { plusMenu = true }
+                        DropdownMenu(expanded = plusMenu, onDismissRequest = { plusMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text(if (agentMode) "Stop controlling phone" else "Control my phone") },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.PhoneAndroid, null, tint = if (agentMode) c.primary else c.onSurfaceVariant)
+                                },
+                                onClick = { plusMenu = false; onToggleAgent() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("New chat") },
+                                leadingIcon = { Icon(Icons.Filled.Add, null) },
+                                onClick = { plusMenu = false; onNewChat() },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Box {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = c.background,
+                            border = BorderStroke(1.dp, c.outline),
+                            modifier = Modifier.clickable { modelMenu = true },
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 7.dp, bottom = 7.dp),
+                            ) {
+                                Text(
+                                    modelLabel,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = c.onBackground,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 130.dp),
+                                )
+                                Icon(Icons.Filled.KeyboardArrowDown, null, tint = c.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                            models.forEach { m ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(m.label, style = MaterialTheme.typography.bodyMedium, color = c.onBackground)
+                                            Text(m.note, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                                        }
+                                    },
+                                    onClick = { modelMenu = false; onSelectModel(m.id) },
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    ToolButton(Icons.Filled.Mic, "Dictate", onClick = onMic)
+                    Spacer(Modifier.width(2.dp))
+                    Box(
+                        Modifier.size(42.dp).clip(CircleShape).background(c.primary)
+                            .clickable(onClick = { if (hasText) onSend() else onVoice() }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            if (hasText) Icons.AutoMirrored.Filled.Send else Icons.Filled.GraphicEq,
+                            contentDescription = if (hasText) "Send" else "Voice chat",
+                            tint = c.onPrimary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun ToolButton(icon: ImageVector, desc: String, onClick: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Box(
+        Modifier.size(38.dp).clip(CircleShape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, desc, tint = c.onSurfaceVariant, modifier = Modifier.size(22.dp))
     }
 }
 
