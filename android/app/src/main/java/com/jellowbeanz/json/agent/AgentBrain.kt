@@ -35,7 +35,8 @@ object AgentBrain {
             "- {\"action\":\"swipe\",\"direction\":\"up|down|left|right\"}\n" +
             "- {\"action\":\"enter\"} — submit/search the focused text field (after typing)\n" +
             "- {\"action\":\"back\"} or {\"action\":\"home\"}\n" +
-            "- {\"action\":\"done\",\"summary\":\"what you accomplished\"} — when the task is complete\n" +
+            "- {\"action\":\"note\",\"text\":\"...\"} — remember something you READ on screen, to use later (does not touch the phone)\n" +
+            "- {\"action\":\"done\",\"summary\":\"what you did, or the answer/summary the user asked for\"} — when the task is complete\n" +
             "You begin from whatever is already on the screen — NOT necessarily the home screen; look before you act " +
             "(if the task is a continuation, carry on from here). " +
             "Only tap element numbers that appear in the list. To open ANY app, use open_app with its name " +
@@ -44,6 +45,11 @@ object AgentBrain {
             "To FIND something inside an app (an email, a message, a contact, a file, a setting), use the app's own " +
             "SEARCH — tap the search box or magnifier icon, type what you're looking for, and submit — instead of " +
             "scrolling a long list one screen at a time; only scroll when there is no search. " +
+            "When the task is to GATHER or SUMMARIZE information across several items (e.g. read the last 10 emails " +
+            "and summarize what each one charges, flagging duplicate or unusual expenses): open each item, read the " +
+            "text shown, use note to record the key facts, go back, and repeat for the next item — then put the full " +
+            "answer or summary in done's summary, drawing on your notes. Your notes are given back to you every turn, " +
+            "so record everything you'll need before moving on. " +
             "IMPORTANT: on a calculator you MUST tap the = button as the LAST step to compute the result — " +
             "even if a live preview already shows the answer — before using done. Likewise finish any other " +
             "task with its confirmation step (send / submit / OK) before done. " +
@@ -72,6 +78,7 @@ object AgentBrain {
         task: String,
         screen: String,
         history: String,
+        notes: String,
     ): AgentAction =
         withContext(Dispatchers.IO) {
             val userText = buildString {
@@ -79,6 +86,7 @@ object AgentBrain {
                 append(userName.ifBlank { "the user" }).append(" (the sender/owner of this phone).\n\n")
                 append("TASK: ").append(task).append("\n\n")
                 if (history.isNotBlank()) append("STEPS SO FAR:\n").append(history).append("\n")
+                if (notes.isNotBlank()) append("NOTES YOU'VE TAKEN:\n").append(notes).append("\n")
                 append("CURRENT SCREEN:\n").append(screen)
             }
             val body = JSONObject()
