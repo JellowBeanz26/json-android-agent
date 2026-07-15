@@ -24,7 +24,6 @@ object PhoneAgent {
             var prevScreen = ""
             var prevKey = ""
             var repeatCount = 0
-            var frozenCount = 0
             repeat(MAX_STEPS) { step ->
                 // Read the screen, retrying briefly if we caught it mid-transition (empty tree).
                 var elements = service.readScreen()
@@ -35,18 +34,25 @@ object PhoneAgent {
                     probe++
                 }
                 val screen = service.renderScreen(elements)
+
+                // If the last action changed nothing, tell the model — it knows the task, so it can judge whether
+                // that's expected (a deliberate revisit / repeated action) or a cue to try a different approach.
+                if (step > 0 && screen == prevScreen) {
+                    history.append("   (note: the previous step did not change the screen)\n")
+                }
+
                 val action = AgentBrain.nextAction(apiKey, model, userName, task, screen, history.toString())
                 Logger.d("agent ${step + 1}: ${action.action} ${action.index ?: action.app ?: action.text ?: action.direction ?: ""}")
 
                 if (action.action == "done") return action.summary ?: "Done."
 
-                // Progress guards — these, not the step budget, are the real safety net against runaways:
-                // stop if the model robotically repeats a step, or if the screen stops responding at all.
+                // The only heuristic hard stop: the EXACT same action on the EXACT same screen several times over —
+                // unambiguously stuck, with the model getting no feedback either. Revisiting a screen or cycling
+                // between apps never trips this, because the screen differs from one step to the next.
                 val key = "${action.action}|${action.index}|${action.app}|${action.text}|${action.direction}"
                 repeatCount = if (screen == prevScreen && key == prevKey) repeatCount + 1 else 0
-                frozenCount = if (screen == prevScreen) frozenCount + 1 else 0
-                if (repeatCount >= 2 || frozenCount >= 3) {
-                    return "The screen stopped responding to my actions, so I stopped instead of flailing — " +
+                if (repeatCount >= 3) {
+                    return "I repeated the same step several times with no effect, so I stopped — " +
                         "the task may be only partly done. Tell me to continue and I'll pick up from here."
                 }
                 prevScreen = screen
