@@ -21,6 +21,13 @@ data class AgentAction(
     val summary: String? = null,
 )
 
+/** The agent's own call at a step checkpoint: extend and keep going, or stop. */
+data class ContinueDecision(
+    val cont: Boolean,
+    val steps: Int,
+    val reason: String,
+)
+
 /** Picks the next phone action given the task + current screen (Gemini, JSON output). */
 object AgentBrain {
     private const val SYSTEM =
@@ -64,6 +71,14 @@ object AgentBrain {
             "a test message, as part of the software testing <owner> is doing.\"\n" +
             "Let the owner's wording decide which voice. If the owner gave exact wording, type it verbatim."
 
+    private const val REVIEW_SYSTEM =
+        "You are operating an Android phone to accomplish a task and have reached a step checkpoint. Decide " +
+            "whether to keep going. Reply with ONLY a JSON object (no prose): " +
+            "{\"continue\":true,\"steps\":10,\"reason\":\"...\"}. Set continue=true ONLY if the task is genuinely " +
+            "still making progress and you can finish it with more steps — set steps to how many more you need " +
+            "(5-20). Set continue=false if the task is already done, is stuck, or is looping without progress; in " +
+            "reason, give a short wrap-up of what you accomplished."
+
     private val http by lazy {
         OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
@@ -79,23 +94,56 @@ object AgentBrain {
         screen: String,
         history: String,
         notes: String,
-    ): AgentAction =
+    ): AgentAction {
+        val userText = buildString {
+            append("You are operating the phone on behalf of ")
+            append(userName.ifBlank { "the user" }).append(" (the sender/owner of this phone).\n\n")
+            append("TASK: ").append(task).append("\n\n")
+            if (history.isNotBlank()) append("STEPS SO FAR:\n").append(history).append("\n")
+            if (notes.isNotBlank()) append("NOTES YOU'VE TAKEN:\n").append(notes).append("\n")
+            append("CURRENT SCREEN:\n").append(screen)
+        }
+        val text = callGemini(apiKey, model, SYSTEM, userText)
+            ?: return AgentAction(action = "done", summary = "Couldn't reach the model.")
+        return runCatching { parse(text) }
+            .getOrElse { AgentAction(action = "done", summary = "Couldn't understand the next step.") }
+    }
+
+    /** At a step checkpoint, the agent decides for itself whether to extend and by how much. */
+    suspend fun reviewProgress(
+        apiKey: String,
+        model: String,
+        task: String,
+        history: String,
+        notes: String,
+        stepsUsed: Int,
+    ): ContinueDecision {
+        val user = buildString {
+            append("TASK: ").append(task).append("\n\n")
+            append("You have used ").append(stepsUsed).append(" steps so far.\n\n")
+            if (history.isNotBlank()) append("STEPS SO FAR:\n").append(history).append("\n")
+            if (notes.isNotBlank()) append("NOTES YOU'VE TAKEN:\n").append(notes).append("\n")
+            append("Should you continue?")
+        }
+        val text = callGemini(apiKey, model, REVIEW_SYSTEM, user)
+            ?: return ContinueDecision(false, 0, "I couldn't check whether to keep going, so I stopped.")
+        return runCatching {
+            val json = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1)
+            val o = JSONObject(json)
+            ContinueDecision(o.optBoolean("continue", false), o.optInt("steps", 10), o.optString("reason"))
+        }.getOrElse { ContinueDecision(false, 0, "I stopped at the checkpoint.") }
+    }
+
+    /** One Gemini generateContent round-trip (thinking off, JSON out). Returns the text, or null on failure. */
+    private suspend fun callGemini(apiKey: String, model: String, system: String, user: String): String? =
         withContext(Dispatchers.IO) {
-            val userText = buildString {
-                append("You are operating the phone on behalf of ")
-                append(userName.ifBlank { "the user" }).append(" (the sender/owner of this phone).\n\n")
-                append("TASK: ").append(task).append("\n\n")
-                if (history.isNotBlank()) append("STEPS SO FAR:\n").append(history).append("\n")
-                if (notes.isNotBlank()) append("NOTES YOU'VE TAKEN:\n").append(notes).append("\n")
-                append("CURRENT SCREEN:\n").append(screen)
-            }
             val body = JSONObject()
-                .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM))))
+                .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
                 .put(
                     "contents",
                     JSONArray().put(
                         JSONObject().put("role", "user")
-                            .put("parts", JSONArray().put(JSONObject().put("text", userText))),
+                            .put("parts", JSONArray().put(JSONObject().put("text", user))),
                     ),
                 )
                 .put(
@@ -113,20 +161,15 @@ object AgentBrain {
                 .post(body.toRequestBody("application/json".toMediaType()))
                 .build()
 
-            http.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    return@withContext AgentAction(action = "done", summary = "Couldn't reach the model (error ${resp.code}).")
-                }
-                val text = runCatching {
+            runCatching {
+                http.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext null
                     JSONObject(resp.body!!.string())
                         .getJSONArray("candidates").getJSONObject(0)
                         .getJSONObject("content").getJSONArray("parts").getJSONObject(0)
                         .getString("text")
-                }.getOrNull() ?: return@withContext AgentAction(action = "done", summary = "No response from the model.")
-                runCatching { parse(text) }.getOrElse {
-                    AgentAction(action = "done", summary = "Couldn't understand the next step.")
                 }
-            }
+            }.getOrNull()
         }
 
     private fun parse(text: String): AgentAction {

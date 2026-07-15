@@ -17,6 +17,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import kotlinx.coroutines.delay
 
@@ -43,45 +44,46 @@ class JsonAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        overlay?.let { runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) } }
-        overlay = null
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        borderOverlay?.let { runCatching { wm.removeView(it) } }
+        borderOverlay = null
+        controlBar?.let { runCatching { wm.removeView(it) } }
+        controlBar = null
         if (instance === this) instance = null
     }
 
     // ---- "Json is controlling your phone" overlay (the visible sign) ----
 
-    private var overlay: View? = null
+    private var borderOverlay: View? = null
+    private var controlBar: View? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /** Set true when the user taps Stop on the control bar; the agent loop polls it and halts. */
+    @Volatile
+    var stopRequested = false
+        private set
+
+    /** True only while the agent's own gesture is being injected — so its taps can't trigger Stop. */
+    @Volatile
+    private var agentGestureInFlight = false
+
     fun showControlOverlay() = mainHandler.post {
-        if (overlay != null) return@post
+        if (borderOverlay != null) return@post
+        stopRequested = false
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val d = resources.displayMetrics.density
         fun dp(v: Int) = (v * d).toInt()
         val accent = 0xFFD97757.toInt()
 
-        val root = FrameLayout(this)
-        root.background = GradientDrawable().apply {
-            setStroke(dp(4), accent)
-            cornerRadius = dp(22).toFloat()
-            setColor(0x00000000)
+        // 1) Full-screen accent border — purely visual, never intercepts touches.
+        val border = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                setStroke(dp(4), accent)
+                cornerRadius = dp(22).toFloat()
+                setColor(0x00000000)
+            }
         }
-        val pill = TextView(this).apply {
-            text = "✦  Json is controlling your phone"
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 13f
-            setPadding(dp(18), dp(9), dp(18), dp(9))
-            background = GradientDrawable().apply { setColor(accent); cornerRadius = dp(22).toFloat() }
-        }
-        root.addView(
-            pill,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; topMargin = dp(52) },
-        )
-
-        val params = WindowManager.LayoutParams(
+        val borderParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -90,15 +92,100 @@ class JsonAccessibilityService : AccessibilityService() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         )
+
+        // 2) A small touchable bar with the label + a Stop button the user can tap at any time.
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = GradientDrawable().apply { setColor(accent); cornerRadius = dp(22).toFloat() }
+            setPadding(dp(16), dp(7), dp(7), dp(7))
+        }
+        val label = TextView(this).apply {
+            text = "✦  Json is controlling your phone"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 13f
+        }
+        val stop = TextView(this).apply {
+            text = "Stop"
+            setTextColor(accent)
+            textSize = 13f
+            setPadding(dp(16), dp(6), dp(16), dp(6))
+            background = GradientDrawable().apply { setColor(0xFFFFFFFF.toInt()); cornerRadius = dp(16).toFloat() }
+            setOnClickListener {
+                if (agentGestureInFlight) return@setOnClickListener // never let the agent's injected tap trip Stop
+                stopRequested = true
+                text = "Stopping…"
+            }
+        }
+        bar.addView(label)
+        bar.addView(
+            stop,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { marginStart = dp(12) },
+        )
+        val barParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = dp(44) }
+
         runCatching {
-            wm.addView(root, params)
-            overlay = root
+            wm.addView(border, borderParams)
+            borderOverlay = border
+            wm.addView(bar, barParams)
+            controlBar = bar
         }
     }
 
     fun hideControlOverlay() = mainHandler.post {
-        overlay?.let { v -> runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(v) } }
-        overlay = null
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        borderOverlay?.let { runCatching { wm.removeView(it) } }
+        borderOverlay = null
+        controlBar?.let { runCatching { wm.removeView(it) } }
+        controlBar = null
+    }
+
+    /**
+     * Dispatches an agent gesture so it passes THROUGH the Stop bar to the app behind, and can never
+     * trigger Stop: the bar is made non-touchable for the gesture's duration, and Stop taps are ignored
+     * while a gesture is in flight. A delayed restore guarantees Stop is never left disabled.
+     */
+    private fun dispatchAgentGesture(gesture: GestureDescription) {
+        val restore = Runnable {
+            agentGestureInFlight = false
+            setBarTouchable(true)
+        }
+        agentGestureInFlight = true
+        setBarTouchable(false)
+        mainHandler.postDelayed(restore, 1200)
+        dispatchGesture(
+            gesture,
+            object : GestureResultCallback() {
+                override fun onCompleted(g: GestureDescription?) = restore.run()
+                override fun onCancelled(g: GestureDescription?) = restore.run()
+            },
+            mainHandler,
+        )
+    }
+
+    /** Toggle whether the Stop bar intercepts touches (false = the agent's taps pass through to the app behind). */
+    private fun setBarTouchable(touchable: Boolean) {
+        val bar = controlBar ?: return
+        val lp = bar.layoutParams as? WindowManager.LayoutParams ?: return
+        val newFlags = if (touchable) {
+            lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        } else {
+            lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        if (newFlags != lp.flags) {
+            lp.flags = newFlags
+            runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).updateViewLayout(bar, lp) }
+        }
     }
 
     /** Bumped on every UI event; lets [waitUntilIdle] wait exactly as long as the screen keeps changing. */
@@ -175,12 +262,10 @@ class JsonAccessibilityService : AccessibilityService() {
     fun tap(x: Int, y: Int) {
         if (x < 0 || y < 0) return
         val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
-        dispatchGesture(
+        dispatchAgentGesture(
             GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(path, 0, 60))
                 .build(),
-            null,
-            null,
         )
     }
 
@@ -216,12 +301,10 @@ class JsonAccessibilityService : AccessibilityService() {
             "right" -> { path.moveTo(cx - dx, cy); path.lineTo(cx + dx, cy) }
             else -> { path.moveTo(cx, cy + dy); path.lineTo(cx, cy - dy) } // "down"
         }
-        dispatchGesture(
+        dispatchAgentGesture(
             GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
                 .build(),
-            null,
-            null,
         )
         return "Swiped $direction"
     }
