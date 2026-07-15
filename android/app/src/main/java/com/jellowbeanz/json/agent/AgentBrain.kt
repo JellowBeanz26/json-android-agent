@@ -19,6 +19,12 @@ data class AgentAction(
     val app: String? = null,
     val direction: String? = null,
     val summary: String? = null,
+    val url: String? = null,
+    val number: String? = null,
+    val query: String? = null,
+    val recipient: String? = null,
+    val subject: String? = null,
+    val body: String? = null,
 )
 
 /** The agent's own call at a step checkpoint: extend and keep going, or stop. */
@@ -39,6 +45,11 @@ object AgentBrain {
             "- {\"action\":\"tap\",\"index\":N} — tap element number N\n" +
             "- {\"action\":\"type\",\"text\":\"...\"} — type into the focused text field\n" +
             "- {\"action\":\"open_app\",\"app\":\"Calculator\"} — launch an app by name\n" +
+            "- {\"action\":\"open_url\",\"url\":\"https://…\"} — open a web page or search (shortcut)\n" +
+            "- {\"action\":\"dial\",\"number\":\"…\"} — open the dialer with a number (shortcut)\n" +
+            "- {\"action\":\"maps\",\"query\":\"place or address\"} — open maps (shortcut)\n" +
+            "- {\"action\":\"email\",\"to\":\"…\",\"subject\":\"…\",\"body\":\"…\"} — open a pre-filled email (shortcut)\n" +
+            "- {\"action\":\"whatsapp\",\"number\":\"+972…\",\"text\":\"…\"} — open a WhatsApp chat pre-filled (shortcut, needs a phone number)\n" +
             "- {\"action\":\"swipe\",\"direction\":\"up|down|left|right\"}\n" +
             "- {\"action\":\"enter\"} — submit/search the focused text field (after typing)\n" +
             "- {\"action\":\"back\"} or {\"action\":\"home\"}\n" +
@@ -50,6 +61,11 @@ object AgentBrain {
             "Only tap element numbers that appear in the list. To open ANY app, use open_app with its name " +
             "(e.g. {\"action\":\"open_app\",\"app\":\"Calculator\"}) from anywhere — do not hunt for its icon, and use " +
             "home or back to navigate when you need to. " +
+            "SHORTCUTS: for these common actions PREFER the direct shortcut (open_url, dial, maps, email, whatsapp) — " +
+            "it jumps straight to the app already filled in, skipping navigation. If a shortcut can't run, its result " +
+            "will say so and you then open the app and do it by hand instead. After a shortcut opens the app, still " +
+            "finish with the confirmation step (tap Send / Call). whatsapp needs a phone NUMBER; if you only have a " +
+            "name, open WhatsApp and search the contact. " +
             "To FIND something inside an app (an email, a message, a contact, a file, a setting), use the app's own " +
             "SEARCH: tap the search box or magnifier icon, type your query, then use the enter action to RUN the " +
             "search. Read the results only AFTER they load — never swipe or scroll before you have run the search " +
@@ -193,6 +209,12 @@ object AgentBrain {
             app = o.optString("app").takeIf { it.isNotEmpty() },
             direction = o.optString("direction").takeIf { it.isNotEmpty() },
             summary = o.optString("summary").takeIf { it.isNotEmpty() },
+            url = o.optString("url").takeIf { it.isNotEmpty() },
+            number = o.optString("number").takeIf { it.isNotEmpty() },
+            query = o.optString("query").takeIf { it.isNotEmpty() },
+            recipient = o.optString("to").takeIf { it.isNotEmpty() },
+            subject = o.optString("subject").takeIf { it.isNotEmpty() },
+            body = o.optString("body").takeIf { it.isNotEmpty() },
         )
     }
 }

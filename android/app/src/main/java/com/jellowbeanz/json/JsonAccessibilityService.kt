@@ -3,6 +3,7 @@ package com.jellowbeanz.json
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.net.Uri
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -393,6 +394,48 @@ class JsonAccessibilityService : AccessibilityService() {
             ?: return "Can't launch $pkg."
         startActivity(intent)
         return "Opened ${match.loadLabel(pm)}"
+    }
+
+    // ---- fast-path shortcuts: jump straight to a pre-filled app via an Intent, skipping navigation.
+    // Each first checks an app can actually handle it; the caller falls back to normal navigation if not. ----
+
+    /** Fires [intent] only if some app can handle it; returns false so the agent can fall back. */
+    private fun launch(intent: Intent): Boolean {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (packageManager.queryIntentActivities(intent, 0).isEmpty()) return false
+        return runCatching { startActivity(intent); true }.getOrDefault(false)
+    }
+
+    fun openUrl(url: String): String {
+        val u = url.trim().ifBlank { return "No link to open." }
+        val uri = if (u.startsWith("http")) u else "https://$u"
+        return if (launch(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))) "Opened $uri" else "Couldn't open the link."
+    }
+
+    fun dial(number: String): String {
+        val n = number.trim().ifBlank { return "No number to dial." }
+        return if (launch(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${Uri.encode(n)}")))) "Opened dialer for $n" else "No dialer app."
+    }
+
+    fun openMaps(query: String): String {
+        val q = query.trim().ifBlank { return "No place to search." }
+        return if (launch(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=${Uri.encode(q)}")))) "Opened maps for \"$q\"" else "No maps app."
+    }
+
+    fun email(recipient: String, subject: String, body: String): String {
+        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")).apply {
+            if (recipient.isNotBlank()) putExtra(Intent.EXTRA_EMAIL, arrayOf(recipient.trim()))
+            if (subject.isNotBlank()) putExtra(Intent.EXTRA_SUBJECT, subject)
+            if (body.isNotBlank()) putExtra(Intent.EXTRA_TEXT, body)
+        }
+        return if (launch(intent)) "Opened an email to ${recipient.ifBlank { "compose" }}" else "No email app."
+    }
+
+    fun whatsApp(number: String, text: String): String {
+        val n = number.filter { it.isDigit() || it == '+' }
+        if (n.isBlank()) return "The WhatsApp shortcut needs a phone number; search the contact instead."
+        val uri = "whatsapp://send?phone=${Uri.encode(n)}" + if (text.isNotBlank()) "&text=${Uri.encode(text)}" else ""
+        return if (launch(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))) "Opened a WhatsApp chat with $n" else "WhatsApp isn't available."
     }
 
     companion object {

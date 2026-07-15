@@ -96,6 +96,11 @@ object PhoneAgent {
                             "tap" -> service.tapIndex(elements, action.index ?: -1)
                             "type" -> service.typeText(action.text ?: "")
                             "open_app" -> service.openApp(action.app ?: "")
+                            "open_url" -> service.openUrl(action.url ?: "")
+                            "dial" -> service.dial(action.number ?: "")
+                            "maps" -> service.openMaps(action.query ?: "")
+                            "email" -> service.email(action.recipient ?: "", action.subject ?: "", action.body ?: "")
+                            "whatsapp" -> service.whatsApp(action.number ?: "", action.text ?: "")
                             "swipe" -> service.swipe(action.direction ?: "down")
                             "back" -> service.press("back")
                             "home" -> service.press("home")
@@ -114,7 +119,8 @@ object PhoneAgent {
                 // Adaptive settle for real actions; a note changed nothing, so move straight on.
                 when (action.action) {
                     "note" -> {}
-                    "open_app" -> service.waitUntilIdle(quietMs = 500, maxMs = 2800)
+                    "open_app", "open_url", "dial", "maps", "email", "whatsapp" ->
+                        service.waitUntilIdle(quietMs = 500, maxMs = 2800)
                     else -> service.waitUntilIdle(quietMs = 350, maxMs = 1600)
                 }
 
