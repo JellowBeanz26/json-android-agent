@@ -34,6 +34,7 @@ data class Settings(
 class SettingsStore(private val context: Context) {
 
     val theme: Flow<String> = context.dataStore.data.map { it[THEME] ?: "system" }
+    val accent: Flow<String> = context.dataStore.data.map { it[ACCENT] ?: "terracotta" }
     val model: Flow<String> = context.dataStore.data.map { it[MODEL] ?: DEFAULT_MODEL }
     val userName: Flow<String> = context.dataStore.data.map { it[USER_NAME] ?: "" }
     val about: Flow<String> = context.dataStore.data.map { it[ABOUT] ?: "" }
@@ -46,6 +47,7 @@ class SettingsStore(private val context: Context) {
     val memories: Flow<List<String>> = context.dataStore.data.map { (it[MEMORIES] ?: emptySet()).toList() }
 
     suspend fun setTheme(v: String) = context.dataStore.edit { it[THEME] = v }
+    suspend fun setAccent(v: String) = context.dataStore.edit { it[ACCENT] = v }
     suspend fun setModel(v: String) = context.dataStore.edit { it[MODEL] = v }
     suspend fun setUserName(v: String) = context.dataStore.edit { it[USER_NAME] = v }
     suspend fun setAbout(v: String) = context.dataStore.edit { it[ABOUT] = v }
@@ -85,6 +87,7 @@ class SettingsStore(private val context: Context) {
         const val DEFAULT_MODEL = "gemini-2.5-flash"
 
         private val THEME = stringPreferencesKey("theme")
+        private val ACCENT = stringPreferencesKey("accent")
         private val MODEL = stringPreferencesKey("model")
         private val USER_NAME = stringPreferencesKey("user_name")
         private val ABOUT = stringPreferencesKey("about_you")

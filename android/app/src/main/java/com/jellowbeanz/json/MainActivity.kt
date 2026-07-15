@@ -26,12 +26,13 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 val store = remember { SettingsStore(context) }
                 val theme by store.theme.collectAsState(initial = "system")
+                val accent by store.accent.collectAsState(initial = "terracotta")
                 val dark = when (theme) {
                     "dark" -> true
                     "light" -> false
                     else -> isSystemInDarkTheme()
                 }
-                JsonTheme(darkTheme = dark) {
+                JsonTheme(darkTheme = dark, accentId = accent) {
                     App()
                 }
             }

@@ -1,9 +1,12 @@
 package com.jellowbeanz.json.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -24,6 +27,8 @@ import com.jellowbeanz.json.data.SettingsStore
 import com.jellowbeanz.json.detectProvider
 import com.jellowbeanz.json.llm.GeminiProvider
 import com.jellowbeanz.json.llm.Llm
+import com.jellowbeanz.json.ui.theme.AccentOptions
+import com.jellowbeanz.json.ui.theme.DEFAULT_ACCENT
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -36,6 +41,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onOpenDebug: () 
     val store = remember { SettingsStore(context) }
 
     val theme by store.theme.collectAsState(initial = "system")
+    val accent by store.accent.collectAsState(initial = DEFAULT_ACCENT)
     val model by store.model.collectAsState(initial = SettingsStore.DEFAULT_MODEL)
     val style by store.style.collectAsState(initial = "default")
 
@@ -158,6 +164,39 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onOpenDebug: () 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (id, label) ->
                         Pill(label, theme == id) { scope.launch { store.setTheme(id) } }
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FieldLabel("Accent color")
+                    Spacer(Modifier.weight(1f))
+                    if (accent != DEFAULT_ACCENT) {
+                        Text(
+                            "Reset",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = c.primary,
+                            modifier = Modifier.clickable { scope.launch { store.setAccent(DEFAULT_ACCENT) } },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    AccentOptions.forEach { opt ->
+                        val selected = accent == opt.id
+                        Box(
+                            Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(opt.color)
+                                .border(
+                                    BorderStroke(if (selected) 3.dp else 1.dp, if (selected) c.onBackground else c.outline),
+                                    CircleShape,
+                                )
+                                .clickable { scope.launch { store.setAccent(opt.id) } },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (selected) Icon(Icons.Filled.Check, null, tint = opt.onColor, modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
             }

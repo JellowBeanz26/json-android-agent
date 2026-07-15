@@ -18,6 +18,24 @@ val LightBorder = Color(0xFFE7E0D5)
 val LightOnBackground = Color(0xFF201D19)
 val LightOnMuted = Color(0xFF6C6458)
 
-// Shared accent
+// Shared accent (the default)
 val Accent = Color(0xFFD97757)
 val OnAccent = Color(0xFF1C1A17)
+
+/** A selectable accent (the app's primary colour) with a matching on-colour for contrast. */
+data class AccentOption(val id: String, val label: String, val color: Color, val onColor: Color)
+
+/** The accent palette; the first entry is the default. Colours read well on both the cream and charcoal themes. */
+val AccentOptions = listOf(
+    AccentOption("terracotta", "Terracotta", Accent, OnAccent),
+    AccentOption("purple", "Purple", Color(0xFF8B6DF0), Color(0xFFFFFFFF)),
+    AccentOption("blue", "Blue", Color(0xFF4C8DF6), Color(0xFFFFFFFF)),
+    AccentOption("teal", "Teal", Color(0xFF2FB0A6), Color(0xFF07201E)),
+    AccentOption("green", "Green", Color(0xFF46A96A), Color(0xFF06160D)),
+    AccentOption("rose", "Rose", Color(0xFFE86F9E), Color(0xFF2A0E19)),
+    AccentOption("amber", "Amber", Color(0xFFE0A33E), Color(0xFF1C1A17)),
+)
+
+const val DEFAULT_ACCENT = "terracotta"
+
+fun accentById(id: String): AccentOption = AccentOptions.firstOrNull { it.id == id } ?: AccentOptions.first()
