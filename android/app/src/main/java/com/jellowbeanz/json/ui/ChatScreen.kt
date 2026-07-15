@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -59,6 +60,7 @@ import com.jellowbeanz.json.R
 import com.jellowbeanz.json.Streaming
 import com.jellowbeanz.json.data.Conversation
 import com.jellowbeanz.json.data.Message
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.app.Activity
 import android.speech.RecognizerIntent
@@ -545,7 +547,7 @@ private fun EmptyState(onPrompt: (String) -> Unit) {
 @Composable
 private fun UserBubble(text: String) {
     val c = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         Surface(
             color = c.surfaceVariant,
             shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
@@ -560,27 +562,41 @@ private fun UserBubble(text: String) {
                 )
             }
         }
+        CopyButton(text)
     }
 }
 
 @Composable
 private fun AssistantMessage(text: String) {
-    val c = MaterialTheme.colorScheme
-    val clipboard = LocalClipboardManager.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         JsonMark()
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             SelectionContainer {
-                MarkdownText(text, color = c.onBackground, modifier = Modifier.padding(top = 3.dp))
+                MarkdownText(text, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(top = 3.dp))
             }
-            IconButton(
-                onClick = { clipboard.setText(AnnotatedString(text)) },
-                modifier = Modifier.size(30.dp),
-            ) {
-                Icon(Icons.Filled.ContentCopy, "Copy", tint = c.onSurfaceVariant, modifier = Modifier.size(15.dp))
-            }
+            CopyButton(text)
         }
+    }
+}
+
+/** A small copy affordance under a message; briefly shows a check when tapped. */
+@Composable
+private fun CopyButton(text: String) {
+    val c = MaterialTheme.colorScheme
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { delay(1200); copied = false } }
+    IconButton(
+        onClick = { clipboard.setText(AnnotatedString(text)); copied = true },
+        modifier = Modifier.size(28.dp),
+    ) {
+        Icon(
+            if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+            contentDescription = "Copy message",
+            tint = if (copied) c.primary else c.onSurfaceVariant,
+            modifier = Modifier.size(14.dp),
+        )
     }
 }
 
