@@ -362,10 +362,13 @@ class JsonAccessibilityService : AccessibilityService() {
     }
 
     private fun pressEnter(): String {
-        val focused = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-            ?: return "No text field is focused."
+        val root = rootInActiveWindow ?: return "No screen to submit."
+        val field = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            ?: findEditable(root)
+            ?: return "No text field to submit."
+        if (!field.isFocused) runCatching { field.performAction(AccessibilityNodeInfo.ACTION_FOCUS) }
         return if (android.os.Build.VERSION.SDK_INT >= 30 &&
-            focused.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+            field.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
         ) {
             "Pressed enter"
         } else {

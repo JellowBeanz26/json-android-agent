@@ -51,8 +51,9 @@ object AgentBrain {
             "(e.g. {\"action\":\"open_app\",\"app\":\"Calculator\"}) from anywhere — do not hunt for its icon, and use " +
             "home or back to navigate when you need to. " +
             "To FIND something inside an app (an email, a message, a contact, a file, a setting), use the app's own " +
-            "SEARCH — tap the search box or magnifier icon, type what you're looking for, and submit — instead of " +
-            "scrolling a long list one screen at a time; only scroll when there is no search. " +
+            "SEARCH: tap the search box or magnifier icon, type your query, then use the enter action to RUN the " +
+            "search. Read the results only AFTER they load — never swipe or scroll before you have run the search " +
+            "with enter; typing alone does not run it. Prefer search over scrolling a long list one screen at a time. " +
             "When the task is to GATHER or SUMMARIZE information across several items (e.g. read the last 10 emails " +
             "and summarize what each one charges, flagging duplicate or unusual expenses): open each item, read the " +
             "text shown, use note to record the key facts, go back, and repeat for the next item — then put the full " +
