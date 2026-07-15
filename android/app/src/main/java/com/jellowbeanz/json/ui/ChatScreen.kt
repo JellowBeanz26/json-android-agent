@@ -57,6 +57,7 @@ import com.jellowbeanz.json.KeyStore
 import com.jellowbeanz.json.R
 import com.jellowbeanz.json.Streaming
 import com.jellowbeanz.json.data.Conversation
+import com.jellowbeanz.json.data.Message
 import kotlinx.coroutines.launch
 import android.app.Activity
 import android.speech.RecognizerIntent
@@ -65,6 +66,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.jellowbeanz.json.data.SettingsStore
@@ -89,9 +91,10 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val imeVisible = WindowInsets.isImeVisible
+    val rows = remember(messages) { toChatRows(messages) }
 
-    LaunchedEffect(messages.size, streaming, imeVisible) {
-        val total = messages.size + if (streaming.active) 1 else 0
+    LaunchedEffect(rows.size, streaming, imeVisible) {
+        val total = rows.size + if (streaming.active) 1 else 0
         if (total > 0) listState.animateScrollToItem(total - 1)
     }
 
@@ -181,11 +184,11 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            items(messages, key = { it.id }) { msg ->
-                                when (msg.role) {
-                                    "user" -> UserBubble(msg.text)
-                                    "action" -> ActionCard(msg.text)
-                                    else -> AssistantMessage(msg.text)
+                            items(rows, key = { it.key }) { row ->
+                                when (row) {
+                                    is ChatRow.User -> UserBubble(row.msg.text)
+                                    is ChatRow.Assistant -> AssistantMessage(row.msg.text)
+                                    is ChatRow.Actions -> AgentActions(row.items)
                                 }
                             }
                             if (streaming.active) item { StreamingMessage(streaming) }
@@ -810,18 +813,84 @@ private fun ToolButton(icon: ImageVector, desc: String, onClick: () -> Unit) {
     }
 }
 
+/** A rendered chat row: a user bubble, an assistant message, or a collapsed group of agent actions. */
+private sealed class ChatRow(val key: String) {
+    class User(val msg: Message) : ChatRow("u${msg.id}")
+    class Assistant(val msg: Message) : ChatRow("m${msg.id}")
+    class Actions(val items: List<Message>) : ChatRow("g${items.first().id}")
+}
+
+/** Coalesce consecutive agent "action" messages into one collapsible group so the chat stays clean. */
+private fun toChatRows(messages: List<Message>): List<ChatRow> {
+    val rows = mutableListOf<ChatRow>()
+    var buffer = mutableListOf<Message>()
+    fun flush() {
+        if (buffer.isNotEmpty()) {
+            rows.add(ChatRow.Actions(buffer.toList()))
+            buffer = mutableListOf()
+        }
+    }
+    for (m in messages) {
+        when (m.role) {
+            "action" -> buffer.add(m)
+            "user" -> { flush(); rows.add(ChatRow.User(m)) }
+            else -> { flush(); rows.add(ChatRow.Assistant(m)) }
+        }
+    }
+    flush()
+    return rows
+}
+
+/** Collapsed agent steps: shows the latest step + a count; tap the arrow to reveal the full list. */
 @Composable
-private fun ActionCard(text: String) {
+private fun AgentActions(items: List<Message>) {
     val c = MaterialTheme.colorScheme
+    var expanded by remember { mutableStateOf(false) }
     Row(Modifier.padding(start = 40.dp)) {
         Surface(color = c.surface, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, c.outline)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-            ) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(c.primary))
-                Spacer(Modifier.width(10.dp))
-                Text(text, style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
+            Column(Modifier.animateContentSize()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { expanded = !expanded }.padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(c.primary))
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        if (expanded) "Steps Json took" else (items.lastOrNull()?.text ?: "Working…"),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = c.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("${items.size}", style = MaterialTheme.typography.labelLarge, color = c.primary)
+                    Icon(
+                        if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = c.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                if (expanded) {
+                    HorizontalDivider(color = c.outline)
+                    Column(
+                        Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        items.forEachIndexed { i, m ->
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text(
+                                    "${i + 1}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = c.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.width(22.dp),
+                                )
+                                Text(m.text, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
             }
         }
     }

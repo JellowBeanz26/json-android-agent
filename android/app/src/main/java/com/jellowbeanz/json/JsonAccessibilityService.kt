@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -101,7 +102,7 @@ class JsonAccessibilityService : AccessibilityService() {
             setPadding(dp(16), dp(7), dp(7), dp(7))
         }
         val label = TextView(this).apply {
-            text = "✦  Json is controlling your phone"
+            text = "⠿  ✦ Json is controlling"
             setTextColor(0xFFFFFFFF.toInt())
             textSize = 13f
         }
@@ -125,6 +126,29 @@ class JsonAccessibilityService : AccessibilityService() {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply { marginStart = dp(12) },
         )
+        // The pill floats and can be dragged (touch the label, not Stop) out of the way, so it never sits
+        // over something Json needs to tap. Stop stays a normal button.
+        bar.setOnTouchListener(object : View.OnTouchListener {
+            private var downRawX = 0f
+            private var downRawY = 0f
+            private var startX = 0
+            private var startY = 0
+            override fun onTouch(v: View, e: MotionEvent): Boolean {
+                val lp = bar.layoutParams as? WindowManager.LayoutParams ?: return false
+                return when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downRawX = e.rawX; downRawY = e.rawY; startX = lp.x; startY = lp.y; true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        lp.x = startX + (e.rawX - downRawX).toInt()
+                        lp.y = startY + (e.rawY - downRawY).toInt()
+                        runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).updateViewLayout(bar, lp) }
+                        true
+                    }
+                    else -> false
+                }
+            }
+        })
         val barParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -162,15 +186,18 @@ class JsonAccessibilityService : AccessibilityService() {
         }
         agentGestureInFlight = true
         setBarTouchable(false)
-        mainHandler.postDelayed(restore, 1200)
-        dispatchGesture(
-            gesture,
-            object : GestureResultCallback() {
-                override fun onCompleted(g: GestureDescription?) = restore.run()
-                override fun onCancelled(g: GestureDescription?) = restore.run()
-            },
-            mainHandler,
-        )
+        mainHandler.postDelayed(restore, 1500)
+        // Let the non-touchable flag take effect before the injected tap lands, so the pill never eats it.
+        mainHandler.postDelayed({
+            dispatchGesture(
+                gesture,
+                object : GestureResultCallback() {
+                    override fun onCompleted(g: GestureDescription?) = restore.run()
+                    override fun onCancelled(g: GestureDescription?) = restore.run()
+                },
+                mainHandler,
+            )
+        }, 50)
     }
 
     /** Toggle whether the Stop bar intercepts touches (false = the agent's taps pass through to the app behind). */
@@ -279,13 +306,28 @@ class JsonAccessibilityService : AccessibilityService() {
     }
 
     fun typeText(text: String): String {
-        val focused = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-            ?: return "No text field is focused (tap one first)."
+        val root = rootInActiveWindow ?: return "No screen to type into."
+        // Prefer the focused field, but fall back to the first editable field — many search bars aren't
+        // reported as "focused" right after a tap, which used to make typing fail in a loop.
+        val target = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            ?: findEditable(root)
+            ?: return "No text field on this screen to type into."
+        if (!target.isFocused) runCatching { target.performAction(AccessibilityNodeInfo.ACTION_FOCUS) }
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
-        focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        return "Typed \"$text\""
+        val ok = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        return if (ok) "Typed \"$text\"" else "Couldn't type into the field."
+    }
+
+    /** First editable node in the tree (a text field), whether or not it currently holds focus. */
+    private fun findEditable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.isEditable) return node
+        for (i in 0 until node.childCount) {
+            findEditable(node.getChild(i))?.let { return it }
+        }
+        return null
     }
 
     fun swipe(direction: String): String {
