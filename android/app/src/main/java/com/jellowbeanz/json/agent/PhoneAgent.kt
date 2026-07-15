@@ -2,11 +2,10 @@ package com.jellowbeanz.json.agent
 
 import com.jellowbeanz.json.JsonAccessibilityService
 import com.jellowbeanz.json.Logger
-import kotlinx.coroutines.delay
 
 /** The observe → think → act loop that drives the phone via the accessibility service. */
 object PhoneAgent {
-    private const val MAX_STEPS = 12
+    private const val MAX_STEPS = 16
 
     /** [onAction] streams each step's description to the UI. Returns the final summary. */
     suspend fun run(
@@ -20,15 +19,33 @@ object PhoneAgent {
         service.showControlOverlay()
         try {
             service.press("home")
-            delay(900)
+            service.waitUntilIdle(quietMs = 400, maxMs = 2000)
             val history = StringBuilder()
+            var prevScreen = ""
+            var prevKey = ""
+            var stuck = 0
             repeat(MAX_STEPS) { step ->
-                val elements = service.readScreen()
+                // Read the screen, retrying briefly if we caught it mid-transition (empty tree).
+                var elements = service.readScreen()
+                var probe = 0
+                while (elements.isEmpty() && probe < 3) {
+                    service.waitUntilIdle(quietMs = 300, maxMs = 1000)
+                    elements = service.readScreen()
+                    probe++
+                }
                 val screen = service.renderScreen(elements)
                 val action = AgentBrain.nextAction(apiKey, model, userName, task, screen, history.toString())
                 Logger.d("agent ${step + 1}: ${action.action} ${action.index ?: action.app ?: action.text ?: action.direction ?: ""}")
 
                 if (action.action == "done") return action.summary ?: "Done."
+
+                // Stuck guard: if the model repeats the same action on an unchanged screen, stop rather than flail.
+                val key = "${action.action}|${action.index}|${action.app}|${action.text}|${action.direction}"
+                if (screen == prevScreen && key == prevKey) stuck++ else stuck = 0
+                if (stuck >= 2) return "I kept repeating the same step without making progress, so I stopped — the task may be only partly done."
+                prevScreen = screen
+                prevKey = key
+
                 val desc = try {
                     when (action.action) {
                         "tap" -> service.tapIndex(elements, action.index ?: -1)
@@ -46,7 +63,10 @@ object PhoneAgent {
                 }
                 onAction(desc)
                 history.append("${step + 1}. ${action.action}: $desc\n")
-                delay(1300)
+
+                // Adaptive settle: launching an app needs longer to load than a tap; both return early once quiet.
+                if (action.action == "open_app") service.waitUntilIdle(quietMs = 500, maxMs = 2800)
+                else service.waitUntilIdle(quietMs = 350, maxMs = 1600)
             }
             return "I reached the step limit — the task may be only partly done."
         } finally {

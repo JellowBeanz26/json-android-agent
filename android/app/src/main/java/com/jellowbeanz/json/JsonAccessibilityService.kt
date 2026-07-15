@@ -10,6 +10,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -17,6 +18,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
 import android.widget.TextView
+import kotlinx.coroutines.delay
 
 /** One on-screen element — the Kotlin twin of the Python agent's Element. */
 data class Element(
@@ -99,9 +101,29 @@ class JsonAccessibilityService : AccessibilityService() {
         overlay = null
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* unused */ }
+    /** Bumped on every UI event; lets [waitUntilIdle] wait exactly as long as the screen keeps changing. */
+    @Volatile
+    private var lastEventTime = 0L
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        lastEventTime = SystemClock.uptimeMillis()
+    }
 
     override fun onInterrupt() { /* required */ }
+
+    /**
+     * Adaptive settle: suspend until the screen has been quiet for [quietMs] (no accessibility events),
+     * capped at [maxMs]. Returns fast when a screen settles quickly, but waits out a slow app launch —
+     * replacing crude fixed sleeps between agent steps.
+     */
+    suspend fun waitUntilIdle(quietMs: Long = 350, maxMs: Long = 1600) {
+        val start = SystemClock.uptimeMillis()
+        while (true) {
+            delay(60)
+            val now = SystemClock.uptimeMillis()
+            if ((now - lastEventTime >= quietMs && now - start >= quietMs) || now - start >= maxMs) return
+        }
+    }
 
     // ---- eyes ----
 
