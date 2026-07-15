@@ -159,7 +159,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * After a normal reply, quietly learn durable facts about the user (like ChatGPT's memory).
+     * After a normal reply, quietly learn durable facts about the user for long-term memory.
      * Best-effort and Gemini-only; when memory grows past the cap it consolidates instead of
      * blindly dropping the oldest. Never blocks or breaks the chat.
      */

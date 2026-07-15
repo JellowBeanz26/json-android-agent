@@ -21,7 +21,7 @@ import com.jellowbeanz.json.data.SettingsStore
 import com.jellowbeanz.json.memory.MemoryExtractor
 import kotlinx.coroutines.launch
 
-/** ChatGPT-style memory manager: see, add, and delete the durable facts Json remembers about you. */
+/** Memory manager: see, add, and delete the durable facts Json remembers about you. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MemoryScreen(onBack: () -> Unit) {

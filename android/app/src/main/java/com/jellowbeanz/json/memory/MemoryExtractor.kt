@@ -11,7 +11,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Maintains a small, dense long-term memory of durable facts about the user — like ChatGPT's memory.
+ * Maintains a small, dense long-term memory of durable facts about the user across chats.
  *
  * [extract] pulls 0–3 genuinely lasting facts from the latest exchange (append-only, safe).
  * [consolidate] merges/dedupes/trims the whole list back under [MAX] when it grows too large —

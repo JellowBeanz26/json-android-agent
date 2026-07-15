@@ -21,7 +21,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import kotlinx.coroutines.delay
 
-/** One on-screen element — the Kotlin twin of the Python agent's Element. */
+/** One on-screen element read from the accessibility tree. */
 data class Element(
     val index: Int,
     val text: String,
