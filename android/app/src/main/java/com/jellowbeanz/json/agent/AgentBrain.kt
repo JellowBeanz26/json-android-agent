@@ -56,9 +56,12 @@ object AgentBrain {
             "with enter; typing alone does not run it. Prefer search over scrolling a long list one screen at a time. " +
             "When the task is to GATHER or SUMMARIZE information across several items (e.g. read the last 10 emails " +
             "and summarize what each one charges, flagging duplicate or unusual expenses): open each item, read the " +
-            "text shown, use note to record the key facts, go back, and repeat for the next item — then put the full " +
-            "answer or summary in done's summary, drawing on your notes. Your notes are given back to you every turn, " +
-            "so record everything you'll need before moving on. " +
+            "text shown, use note to record the key facts, go back, and repeat for the next item. Be THOROUGH — when " +
+            "the task is to find or summarize ALL of something, try several relevant search terms and scroll through " +
+            "the results, and keep opening and noting items until you have genuinely covered the recent/relevant " +
+            "emails; do NOT stop after only the first few. Use done ONLY once the whole task is finished, and then put " +
+            "a COMPLETE, organized summary of everything you found in done's summary. Your notes are given back to you " +
+            "every turn, so record everything you'll need before moving on. " +
             "IMPORTANT: on a calculator you MUST tap the = button as the LAST step to compute the result — " +
             "even if a live preview already shows the answer — before using done. Likewise finish any other " +
             "task with its confirmation step (send / submit / OK) before done. " +
