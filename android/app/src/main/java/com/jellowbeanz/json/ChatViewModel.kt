@@ -8,6 +8,8 @@ import com.jellowbeanz.json.data.Conversation
 import com.jellowbeanz.json.data.JsonDatabase
 import com.jellowbeanz.json.data.Message
 import com.jellowbeanz.json.data.SettingsStore
+import com.jellowbeanz.json.agent.PhoneAgent
+import com.jellowbeanz.json.llm.GeminiProvider
 import com.jellowbeanz.json.llm.Llm
 import com.jellowbeanz.json.llm.LocalProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,6 +48,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val _streaming = MutableStateFlow(Streaming())
     val streaming: StateFlow<Streaming> = _streaming
 
+    /** When on, messages are treated as tasks to perform on the phone (not chat). */
+    private val _agentMode = MutableStateFlow(false)
+    val agentMode: StateFlow<Boolean> = _agentMode
+    fun setAgentMode(on: Boolean) { _agentMode.value = on }
+
     fun newChat() { _currentId.value = null }
 
     fun select(id: Long) { _currentId.value = id }
@@ -77,6 +84,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 _currentId.value = id
             }
             repo.addMessage(id, "user", trimmed, now)
+
+            if (_agentMode.value) {
+                runAgent(id, trimmed, apiKey)
+                return@launch
+            }
 
             val s = settings.snapshot()
             val useLocal = s.useLocal && s.localUrl.isNotBlank()
@@ -141,6 +153,35 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             repo.addMessage(id, "assistant", targetA.ifBlank { "(no response)" }, System.currentTimeMillis())
             _streaming.value = Streaming(active = false)
         }
+    }
+
+    /** Drives the phone via the accessibility service, streaming each step as an "action" message. */
+    private suspend fun runAgent(convId: Long, task: String, apiKey: String) {
+        val service = JsonAccessibilityService.instance
+        if (service == null) {
+            repo.addMessage(
+                convId,
+                "assistant",
+                "Turn on my accessibility service first — Settings → Accessibility → Json — so I can see and control the screen.",
+                System.currentTimeMillis(),
+            )
+            return
+        }
+        if (Llm.forKey(apiKey) != GeminiProvider) {
+            repo.addMessage(convId, "assistant", "Phone control currently needs a Google Gemini key.", System.currentTimeMillis())
+            return
+        }
+        _streaming.value = Streaming(active = true)
+        val summary = try {
+            PhoneAgent.run(apiKey, "gemini-2.5-flash", task, service) { desc ->
+                repo.addMessage(convId, "action", desc, System.currentTimeMillis())
+            }
+        } catch (e: Exception) {
+            Logger.e("agent failed", e)
+            "Something went wrong: ${e.message ?: "the agent stopped"}"
+        }
+        _streaming.value = Streaming(active = false)
+        repo.addMessage(convId, "assistant", summary, System.currentTimeMillis())
     }
 
     private fun titleFrom(text: String): String {

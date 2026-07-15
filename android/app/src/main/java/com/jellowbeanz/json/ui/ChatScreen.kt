@@ -1,5 +1,8 @@
 package com.jellowbeanz.json.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -24,6 +27,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -42,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jellowbeanz.json.ChatViewModel
+import com.jellowbeanz.json.JsonAccessibilityService
 import com.jellowbeanz.json.KeyStore
 import com.jellowbeanz.json.R
 import com.jellowbeanz.json.Streaming
@@ -59,6 +64,8 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
     val currentId by vm.currentId.collectAsStateWithLifecycle()
     val messages by vm.messages.collectAsStateWithLifecycle()
     val streaming by vm.streaming.collectAsStateWithLifecycle()
+    val agentMode by vm.agentMode.collectAsStateWithLifecycle()
+    var showAgentSetup by remember { mutableStateOf(false) }
 
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -113,7 +120,11 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             items(messages, key = { it.id }) { msg ->
-                                if (msg.role == "user") UserBubble(msg.text) else AssistantMessage(msg.text)
+                                when (msg.role) {
+                                    "user" -> UserBubble(msg.text)
+                                    "action" -> ActionCard(msg.text)
+                                    else -> AssistantMessage(msg.text)
+                                }
                             }
                             if (streaming.active) item { StreamingMessage(streaming) }
                         }
@@ -122,6 +133,16 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                 InputBar(
                     value = input,
                     onValueChange = { input = it },
+                    agentMode = agentMode,
+                    onToggleAgent = {
+                        if (agentMode) {
+                            vm.setAgentMode(false)
+                        } else if (JsonAccessibilityService.instance != null && Settings.canDrawOverlays(context)) {
+                            vm.setAgentMode(true)
+                        } else {
+                            showAgentSetup = true
+                        }
+                    },
                     onSend = {
                         val t = input.trim()
                         if (t.isNotBlank()) {
@@ -132,6 +153,31 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                 )
             }
         }
+    }
+
+    if (showAgentSetup) {
+        AgentSetupDialog(
+            onDismiss = { showAgentSetup = false },
+            onAccessibility = {
+                context.startActivity(
+                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            },
+            onOverlay = {
+                context.startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:${context.packageName}"),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            },
+            onReady = {
+                if (JsonAccessibilityService.instance != null && Settings.canDrawOverlays(context)) {
+                    vm.setAgentMode(true)
+                    showAgentSetup = false
+                }
+            },
+        )
     }
 }
 
@@ -557,22 +603,46 @@ private fun JsonMark() {
 // ---------- input ----------
 
 @Composable
-private fun InputBar(value: String, onValueChange: (String) -> Unit, onSend: () -> Unit) {
+private fun InputBar(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSend: () -> Unit,
+    agentMode: Boolean,
+    onToggleAgent: () -> Unit,
+) {
     val c = MaterialTheme.colorScheme
     Surface(color = c.background, modifier = Modifier.imePadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Box(
+                Modifier.size(44.dp).clip(CircleShape)
+                    .background(if (agentMode) c.primary else c.surface)
+                    .clickable(onClick = onToggleAgent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.PhoneAndroid,
+                    contentDescription = "Control the phone",
+                    tint = if (agentMode) c.onPrimary else c.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
             Surface(
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(24.dp),
                 color = c.surface,
-                border = BorderStroke(1.dp, c.outline),
+                border = BorderStroke(1.dp, if (agentMode) c.primary else c.outline),
             ) {
                 Box(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
                     if (value.isEmpty()) {
-                        Text("Message Json…", style = MaterialTheme.typography.bodyLarge, color = c.onSurfaceVariant)
+                        Text(
+                            if (agentMode) "Tell Json what to do on your phone…" else "Message Json…",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = c.onSurfaceVariant,
+                        )
                     }
                     BasicTextField(
                         value = value,
@@ -597,4 +667,49 @@ private fun InputBar(value: String, onValueChange: (String) -> Unit, onSend: () 
             }
         }
     }
+}
+
+@Composable
+private fun ActionCard(text: String) {
+    val c = MaterialTheme.colorScheme
+    Row(Modifier.padding(start = 40.dp)) {
+        Surface(color = c.surface, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, c.outline)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            ) {
+                Box(Modifier.size(6.dp).clip(CircleShape).background(c.primary))
+                Spacer(Modifier.width(10.dp))
+                Text(text, style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AgentSetupDialog(
+    onDismiss: () -> Unit,
+    onAccessibility: () -> Unit,
+    onOverlay: () -> Unit,
+    onReady: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Let Json control your phone") },
+        text = {
+            Column {
+                Text(
+                    "Json needs two one-time permissions. Turn each on, then come back and tap “I'm ready”.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onAccessibility) { Text("1 · Enable accessibility (see & tap the screen)") }
+                TextButton(onClick = onOverlay) { Text("2 · Allow display over other apps (control badge)") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onReady) { Text("I'm ready") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
