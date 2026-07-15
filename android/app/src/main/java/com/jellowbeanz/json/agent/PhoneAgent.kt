@@ -33,10 +33,20 @@ object PhoneAgent {
             var prevKey = ""
             var repeatCount = 0
             var lastWasNote = false
+            var homeGuard = 0
             var budget = INITIAL_STEPS
             var step = 0
             while (step < budget) {
                 if (service.stopRequested) return stoppedMessage
+
+                // Safeguard: never act on the Json app itself — if we land on it, back out to home and re-check
+                // (doesn't rely on the initial home press alone).
+                if (service.isOnOwnApp()) {
+                    service.press("home")
+                    service.waitUntilIdle(quietMs = 400, maxMs = 2000)
+                    if (++homeGuard > 3) return "I couldn't get out of the Json app to start — please try again."
+                    continue
+                }
 
                 // Read the screen, retrying briefly if we caught it mid-transition (empty tree).
                 var elements = service.readScreen()

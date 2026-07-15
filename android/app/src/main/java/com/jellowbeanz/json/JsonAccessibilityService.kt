@@ -248,6 +248,9 @@ class JsonAccessibilityService : AccessibilityService() {
         return elements
     }
 
+    /** True when the foreground app is Json itself — the agent must never operate on its own UI. */
+    fun isOnOwnApp(): Boolean = rootInActiveWindow?.packageName?.toString() == packageName
+
     private fun walk(node: AccessibilityNodeInfo?, out: MutableList<Element>) {
         if (node == null) return
         val text = node.text?.toString().orEmpty()

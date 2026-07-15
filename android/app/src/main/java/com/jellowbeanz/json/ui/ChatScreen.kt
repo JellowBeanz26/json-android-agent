@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
@@ -550,12 +551,14 @@ private fun UserBubble(text: String) {
             shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
             modifier = Modifier.widthIn(max = 300.dp),
         ) {
-            Text(
-                text,
-                style = MaterialTheme.typography.bodyLarge,
-                color = c.onBackground,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
+            SelectionContainer {
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = c.onBackground,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
         }
     }
 }
@@ -568,7 +571,9 @@ private fun AssistantMessage(text: String) {
         JsonMark()
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            MarkdownText(text, color = c.onBackground, modifier = Modifier.padding(top = 3.dp))
+            SelectionContainer {
+                MarkdownText(text, color = c.onBackground, modifier = Modifier.padding(top = 3.dp))
+            }
             IconButton(
                 onClick = { clipboard.setText(AnnotatedString(text)) },
                 modifier = Modifier.size(30.dp),
