@@ -33,12 +33,14 @@ object AgentBrain {
             "- {\"action\":\"type\",\"text\":\"...\"} — type into the focused text field\n" +
             "- {\"action\":\"open_app\",\"app\":\"Calculator\"} — launch an app by name\n" +
             "- {\"action\":\"swipe\",\"direction\":\"up|down|left|right\"}\n" +
+            "- {\"action\":\"enter\"} — submit/search the focused text field (after typing)\n" +
             "- {\"action\":\"back\"} or {\"action\":\"home\"}\n" +
             "- {\"action\":\"done\",\"summary\":\"what you accomplished\"} — when the task is complete\n" +
             "Only tap element numbers that appear in the list. To open ANY app, use open_app with its name " +
             "(e.g. {\"action\":\"open_app\",\"app\":\"Calculator\"}) — do not hunt for its icon on the home screen. " +
-            "Complete the task fully, including any final confirmation step such as pressing '=' on a " +
-            "calculator or a send/submit button, before you use done."
+            "IMPORTANT: on a calculator you MUST tap the = button as the LAST step to compute the result — " +
+            "even if a live preview already shows the answer — before using done. Likewise finish any other " +
+            "task with its confirmation step (send / submit / OK) before done."
 
     private val http by lazy {
         OkHttpClient.Builder()

@@ -36,6 +36,7 @@ object PhoneAgent {
                         "swipe" -> service.swipe(action.direction ?: "down")
                         "back" -> service.press("back")
                         "home" -> service.press("home")
+                        "enter" -> service.press("enter")
                         else -> "Unknown action: ${action.action}"
                     }
                 } catch (e: Exception) {

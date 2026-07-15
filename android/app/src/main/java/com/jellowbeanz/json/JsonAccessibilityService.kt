@@ -207,7 +207,20 @@ class JsonAccessibilityService : AccessibilityService() {
     fun press(key: String): String = when (key) {
         "back" -> { performGlobalAction(GLOBAL_ACTION_BACK); "Pressed back" }
         "home" -> { performGlobalAction(GLOBAL_ACTION_HOME); "Pressed home" }
+        "enter" -> pressEnter()
         else -> "Unknown key: $key"
+    }
+
+    private fun pressEnter(): String {
+        val focused = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            ?: return "No text field is focused."
+        return if (android.os.Build.VERSION.SDK_INT >= 30 &&
+            focused.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+        ) {
+            "Pressed enter"
+        } else {
+            "Couldn't submit"
+        }
     }
 
     fun openApp(query: String): String {
