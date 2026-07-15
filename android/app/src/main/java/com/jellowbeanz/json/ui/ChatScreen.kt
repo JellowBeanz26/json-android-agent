@@ -1,5 +1,6 @@
 package com.jellowbeanz.json.ui
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -22,7 +23,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
@@ -44,6 +47,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jellowbeanz.json.ChatViewModel
 import com.jellowbeanz.json.JsonAccessibilityService
@@ -193,7 +199,7 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                     onToggleAgent = {
                         if (agentMode) {
                             vm.setAgentMode(false)
-                        } else if (JsonAccessibilityService.instance != null && Settings.canDrawOverlays(context)) {
+                        } else if (isAccessibilityServiceEnabled(context) && Settings.canDrawOverlays(context)) {
                             vm.setAgentMode(true)
                         } else {
                             showAgentSetup = true
@@ -234,13 +240,21 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                 )
             },
             onReady = {
-                if (JsonAccessibilityService.instance != null && Settings.canDrawOverlays(context)) {
-                    vm.setAgentMode(true)
-                    showAgentSetup = false
-                }
+                vm.setAgentMode(true)
+                showAgentSetup = false
             },
         )
     }
+}
+
+/** Whether our accessibility service is enabled in system settings (authoritative, reflects the user's toggle). */
+private fun isAccessibilityServiceEnabled(context: Context): Boolean {
+    val expected = "${context.packageName}/${JsonAccessibilityService::class.java.name}"
+    val enabled = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+    ) ?: return false
+    return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
 }
 
 // ---------- top bar ----------
@@ -821,22 +835,65 @@ private fun AgentSetupDialog(
     onReady: () -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    // Re-check both permissions whenever the user returns from a settings screen, so the checkmarks are live.
+    var accessibilityOn by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
+    var overlayOn by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                accessibilityOn = isAccessibilityServiceEnabled(context)
+                overlayOn = Settings.canDrawOverlays(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val ready = accessibilityOn && overlayOn
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Let Json control your phone") },
         text = {
             Column {
                 Text(
-                    "Json needs two one-time permissions. Turn each on, then come back and tap “I'm ready”.",
+                    "Json needs two one-time permissions. Turn each on — the checkmarks update by themselves, then tap Start.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = c.onSurfaceVariant,
                 )
+                Spacer(Modifier.height(14.dp))
+                PermissionRow("Accessibility — see & tap the screen", accessibilityOn, onAccessibility)
                 Spacer(Modifier.height(8.dp))
-                TextButton(onClick = onAccessibility) { Text("1 · Enable accessibility (see & tap the screen)") }
-                TextButton(onClick = onOverlay) { Text("2 · Allow display over other apps (control badge)") }
+                PermissionRow("Display over other apps — control badge", overlayOn, onOverlay)
             }
         },
-        confirmButton = { TextButton(onClick = onReady) { Text("I'm ready") } },
+        confirmButton = {
+            TextButton(onClick = onReady, enabled = ready) {
+                Text(if (ready) "Start" else "Waiting for permissions…")
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+@Composable
+private fun PermissionRow(label: String, granted: Boolean, onGrant: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Icon(
+            if (granted) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+            contentDescription = null,
+            tint = if (granted) c.primary else c.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = c.onBackground, modifier = Modifier.weight(1f))
+        if (granted) {
+            Text("On", style = MaterialTheme.typography.labelLarge, color = c.primary)
+        } else {
+            TextButton(onClick = onGrant, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)) {
+                Text("Turn on")
+            }
+        }
+    }
 }
