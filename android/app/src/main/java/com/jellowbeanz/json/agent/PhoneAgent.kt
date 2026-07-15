@@ -5,7 +5,8 @@ import com.jellowbeanz.json.Logger
 
 /** The observe → think → act loop that drives the phone via the accessibility service. */
 object PhoneAgent {
-    private const val MAX_STEPS = 16
+    // A generous backstop, not the real safety net — the progress guards below stop a runaway far sooner.
+    private const val MAX_STEPS = 30
 
     /** [onAction] streams each step's description to the UI. Returns the final summary. */
     suspend fun run(
@@ -18,12 +19,12 @@ object PhoneAgent {
     ): String {
         service.showControlOverlay()
         try {
-            service.press("home")
-            service.waitUntilIdle(quietMs = 400, maxMs = 2000)
+            service.waitUntilIdle(quietMs = 300, maxMs = 1200) // let the current screen settle before the first look
             val history = StringBuilder()
             var prevScreen = ""
             var prevKey = ""
-            var stuck = 0
+            var repeatCount = 0
+            var frozenCount = 0
             repeat(MAX_STEPS) { step ->
                 // Read the screen, retrying briefly if we caught it mid-transition (empty tree).
                 var elements = service.readScreen()
@@ -39,10 +40,15 @@ object PhoneAgent {
 
                 if (action.action == "done") return action.summary ?: "Done."
 
-                // Stuck guard: if the model repeats the same action on an unchanged screen, stop rather than flail.
+                // Progress guards — these, not the step budget, are the real safety net against runaways:
+                // stop if the model robotically repeats a step, or if the screen stops responding at all.
                 val key = "${action.action}|${action.index}|${action.app}|${action.text}|${action.direction}"
-                if (screen == prevScreen && key == prevKey) stuck++ else stuck = 0
-                if (stuck >= 2) return "I kept repeating the same step without making progress, so I stopped — the task may be only partly done."
+                repeatCount = if (screen == prevScreen && key == prevKey) repeatCount + 1 else 0
+                frozenCount = if (screen == prevScreen) frozenCount + 1 else 0
+                if (repeatCount >= 2 || frozenCount >= 3) {
+                    return "The screen stopped responding to my actions, so I stopped instead of flailing — " +
+                        "the task may be only partly done. Tell me to continue and I'll pick up from here."
+                }
                 prevScreen = screen
                 prevKey = key
 
@@ -68,7 +74,8 @@ object PhoneAgent {
                 if (action.action == "open_app") service.waitUntilIdle(quietMs = 500, maxMs = 2800)
                 else service.waitUntilIdle(quietMs = 350, maxMs = 1600)
             }
-            return "I reached the step limit — the task may be only partly done."
+            return "I've taken $MAX_STEPS steps, so I paused here rather than running on indefinitely. " +
+                "If the task isn't finished, tell me to continue and I'll pick up from this screen."
         } finally {
             service.hideControlOverlay()
         }

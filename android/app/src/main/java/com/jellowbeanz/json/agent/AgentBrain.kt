@@ -36,8 +36,11 @@ object AgentBrain {
             "- {\"action\":\"enter\"} — submit/search the focused text field (after typing)\n" +
             "- {\"action\":\"back\"} or {\"action\":\"home\"}\n" +
             "- {\"action\":\"done\",\"summary\":\"what you accomplished\"} — when the task is complete\n" +
+            "You begin from whatever is already on the screen — NOT necessarily the home screen; look before you act " +
+            "(if the task is a continuation, carry on from here). " +
             "Only tap element numbers that appear in the list. To open ANY app, use open_app with its name " +
-            "(e.g. {\"action\":\"open_app\",\"app\":\"Calculator\"}) — do not hunt for its icon on the home screen. " +
+            "(e.g. {\"action\":\"open_app\",\"app\":\"Calculator\"}) from anywhere — do not hunt for its icon, and use " +
+            "home or back to navigate when you need to. " +
             "IMPORTANT: on a calculator you MUST tap the = button as the LAST step to compute the result — " +
             "even if a live preview already shows the answer — before using done. Likewise finish any other " +
             "task with its confirmation step (send / submit / OK) before done. " +
