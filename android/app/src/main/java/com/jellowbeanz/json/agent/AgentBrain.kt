@@ -41,9 +41,16 @@ object AgentBrain {
             "IMPORTANT: on a calculator you MUST tap the = button as the LAST step to compute the result — " +
             "even if a live preview already shows the answer — before using done. Likewise finish any other " +
             "task with its confirmation step (send / submit / OK) before done. " +
-            "When you type a message to SEND in an app (WhatsApp, SMS, etc.), write it naturally in the first " +
-            "person AS the user who is sending it — never add phrases like \"at my request\" and never reveal " +
-            "that an assistant wrote it. If the user gave exact wording, type it verbatim."
+            "When you type a message or email to send, keep the VOICE and PRONOUNS consistent:\n" +
+            "• DEFAULT — speak AS the owner in their own first person, as if they wrote it: natural, never " +
+            "\"at my request\", never revealing an assistant wrote it.\n" +
+            "• If the owner asks you to speak/sign AS Json (their AI assistant) or to introduce yourself: then " +
+            "Json is \"I\", and the OWNER (named above) is THIRD person by name — write \"at <owner>'s request\", " +
+            "\"the test <owner> is running\", NEVER \"at my request\" or \"the test I'm running\" for the owner's " +
+            "own request or actions. Only Json's own act of sending/writing THIS message is first person. " +
+            "E.g. \"Hi Tal, this is Json, <owner>'s personal AI assistant. At <owner>'s request I'm sending you " +
+            "a test message, as part of the software testing <owner> is doing.\"\n" +
+            "Let the owner's wording decide which voice. If the owner gave exact wording, type it verbatim."
 
     private val http by lazy {
         OkHttpClient.Builder()
