@@ -37,7 +37,8 @@ object AgentBrain {
             "- {\"action\":\"done\",\"summary\":\"what you accomplished\"} — when the task is complete\n" +
             "Only tap element numbers that appear in the list. To open ANY app, use open_app with its name " +
             "(e.g. {\"action\":\"open_app\",\"app\":\"Calculator\"}) — do not hunt for its icon on the home screen. " +
-            "Keep going until the task is fully done, then use done."
+            "Complete the task fully, including any final confirmation step such as pressing '=' on a " +
+            "calculator or a send/submit button, before you use done."
 
     private val http by lazy {
         OkHttpClient.Builder()
