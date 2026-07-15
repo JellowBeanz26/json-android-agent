@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -224,6 +225,8 @@ fun ChatScreen(vm: ChatViewModel, onOpenSettings: () -> Unit) {
                     onMic = { startSpeech(autoSend = false) },
                     onVoice = { startSpeech(autoSend = true) },
                     onNewChat = { vm.newChat() },
+                    streaming = streaming.active,
+                    onStop = { vm.stopGenerating() },
                 )
             }
         }
@@ -715,6 +718,8 @@ private fun InputBar(
     onMic: () -> Unit,
     onVoice: () -> Unit,
     onNewChat: () -> Unit,
+    streaming: Boolean,
+    onStop: () -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
     val hasText = value.isNotBlank()
@@ -807,12 +812,20 @@ private fun InputBar(
                     Spacer(Modifier.width(2.dp))
                     Box(
                         Modifier.size(42.dp).clip(CircleShape).background(c.primary)
-                            .clickable(onClick = { if (hasText) onSend() else onVoice() }),
+                            .clickable(onClick = { if (streaming) onStop() else if (hasText) onSend() else onVoice() }),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            if (hasText) Icons.AutoMirrored.Filled.Send else Icons.Filled.GraphicEq,
-                            contentDescription = if (hasText) "Send" else "Voice chat",
+                            when {
+                                streaming -> Icons.Filled.Stop
+                                hasText -> Icons.AutoMirrored.Filled.Send
+                                else -> Icons.Filled.GraphicEq
+                            },
+                            contentDescription = when {
+                                streaming -> "Stop"
+                                hasText -> "Send"
+                                else -> "Voice chat"
+                            },
                             tint = c.onPrimary,
                             modifier = Modifier.size(20.dp),
                         )

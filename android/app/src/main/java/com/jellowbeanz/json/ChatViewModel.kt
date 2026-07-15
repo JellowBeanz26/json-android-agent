@@ -14,7 +14,12 @@ import com.jellowbeanz.json.memory.MemoryExtractor
 import com.jellowbeanz.json.llm.GeminiProvider
 import com.jellowbeanz.json.llm.Llm
 import com.jellowbeanz.json.llm.LocalProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +60,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     val agentMode: StateFlow<Boolean> = _agentMode
     fun setAgentMode(on: Boolean) { _agentMode.value = on }
 
+    /** The in-flight generation / agent job, so the user can stop it mid-stream. */
+    private var genJob: Job? = null
+    fun stopGenerating() { genJob?.cancel() }
+
     fun newChat() { _currentId.value = null }
 
     fun select(id: Long) { _currentId.value = id }
@@ -78,7 +87,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun send(text: String, apiKey: String) {
         val trimmed = text.trim()
         if (trimmed.isBlank() || _streaming.value.active) return
-        viewModelScope.launch {
+        genJob = viewModelScope.launch {
             val now = System.currentTimeMillis()
             var id = _currentId.value
             if (id == null) {
@@ -108,6 +117,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             var targetR = ""
             var targetA = ""
             var done = false
+            var stopped = false
 
             // Typewriter reveal: play the reasoning first (slow, readable), then the answer (brisk),
             // decoupled from bursty network delivery so nothing flashes past.
@@ -145,16 +155,21 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                             targetA = chunk.answer
                         }
                 }
+            } catch (e: CancellationException) {
+                stopped = true
             } catch (e: Exception) {
                 Logger.e("stream failed", e)
                 if (targetA.isEmpty()) targetA = "Something went wrong: ${e.message ?: "request failed"}"
             }
             done = true
-            reveal.join()
-
-            repo.addMessage(id, "assistant", targetA.ifBlank { "(no response)" }, System.currentTimeMillis())
-            _streaming.value = Streaming(active = false)
-            maybeRemember(trimmed, targetA, apiKey, s)
+            // Save the (possibly partial) reply even when the user stops it mid-stream.
+            withContext(NonCancellable) {
+                if (stopped) reveal.cancelAndJoin() else reveal.join()
+                val finalText = if (stopped) targetA.ifBlank { "(stopped)" } else targetA.ifBlank { "(no response)" }
+                repo.addMessage(id, "assistant", finalText, System.currentTimeMillis())
+                _streaming.value = Streaming(active = false)
+                if (!stopped) maybeRemember(trimmed, targetA, apiKey, s)
+            }
         }
     }
 
@@ -204,12 +219,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             PhoneAgent.run(apiKey, "gemini-2.5-flash", name, task, context, service) { desc ->
                 repo.addMessage(convId, "action", desc, System.currentTimeMillis())
             }
+        } catch (e: CancellationException) {
+            "Stopped."
         } catch (e: Exception) {
             Logger.e("agent failed", e)
             "Something went wrong: ${e.message ?: "the agent stopped"}"
         }
-        _streaming.value = Streaming(active = false)
-        repo.addMessage(convId, "assistant", summary, System.currentTimeMillis())
+        withContext(NonCancellable) {
+            _streaming.value = Streaming(active = false)
+            repo.addMessage(convId, "assistant", summary, System.currentTimeMillis())
+        }
     }
 
     /** Recent user tasks + Json's replies (not the verbose action log) as background, so "continue" has context. */
