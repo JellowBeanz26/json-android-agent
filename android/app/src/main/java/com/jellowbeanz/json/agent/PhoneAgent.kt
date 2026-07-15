@@ -12,6 +12,7 @@ object PhoneAgent {
     suspend fun run(
         apiKey: String,
         model: String,
+        userName: String,
         task: String,
         service: JsonAccessibilityService,
         onAction: suspend (String) -> Unit,
@@ -24,7 +25,7 @@ object PhoneAgent {
             repeat(MAX_STEPS) { step ->
                 val elements = service.readScreen()
                 val screen = service.renderScreen(elements)
-                val action = AgentBrain.nextAction(apiKey, model, task, screen, history.toString())
+                val action = AgentBrain.nextAction(apiKey, model, userName, task, screen, history.toString())
                 Logger.d("agent ${step + 1}: ${action.action} ${action.index ?: action.app ?: action.text ?: action.direction ?: ""}")
 
                 if (action.action == "done") return action.summary ?: "Done."

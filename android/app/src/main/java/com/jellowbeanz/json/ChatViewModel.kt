@@ -172,8 +172,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         _streaming.value = Streaming(active = true)
+        val name = settings.snapshot().userName
         val summary = try {
-            PhoneAgent.run(apiKey, "gemini-2.5-flash", task, service) { desc ->
+            PhoneAgent.run(apiKey, "gemini-2.5-flash", name, task, service) { desc ->
                 repo.addMessage(convId, "action", desc, System.currentTimeMillis())
             }
         } catch (e: Exception) {

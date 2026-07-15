@@ -40,7 +40,10 @@ object AgentBrain {
             "(e.g. {\"action\":\"open_app\",\"app\":\"Calculator\"}) — do not hunt for its icon on the home screen. " +
             "IMPORTANT: on a calculator you MUST tap the = button as the LAST step to compute the result — " +
             "even if a live preview already shows the answer — before using done. Likewise finish any other " +
-            "task with its confirmation step (send / submit / OK) before done."
+            "task with its confirmation step (send / submit / OK) before done. " +
+            "When you type a message to SEND in an app (WhatsApp, SMS, etc.), write it naturally in the first " +
+            "person AS the user who is sending it — never add phrases like \"at my request\" and never reveal " +
+            "that an assistant wrote it. If the user gave exact wording, type it verbatim."
 
     private val http by lazy {
         OkHttpClient.Builder()
@@ -49,9 +52,18 @@ object AgentBrain {
             .build()
     }
 
-    suspend fun nextAction(apiKey: String, model: String, task: String, screen: String, history: String): AgentAction =
+    suspend fun nextAction(
+        apiKey: String,
+        model: String,
+        userName: String,
+        task: String,
+        screen: String,
+        history: String,
+    ): AgentAction =
         withContext(Dispatchers.IO) {
             val userText = buildString {
+                append("You are operating the phone on behalf of ")
+                append(userName.ifBlank { "the user" }).append(" (the sender/owner of this phone).\n\n")
                 append("TASK: ").append(task).append("\n\n")
                 if (history.isNotBlank()) append("STEPS SO FAR:\n").append(history).append("\n")
                 append("CURRENT SCREEN:\n").append(screen)
