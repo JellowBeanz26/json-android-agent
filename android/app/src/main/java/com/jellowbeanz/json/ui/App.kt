@@ -17,8 +17,10 @@ fun App() {
             onBack = { screen = "chat" },
             onClearData = { vm.deleteAll() },
             onOpenDebug = { screen = "debug" },
+            onOpenMemory = { screen = "memory" },
         )
         "debug" -> DebugLogScreen(onBack = { screen = "settings" })
+        "memory" -> MemoryScreen(onBack = { screen = "settings" })
         else -> ChatScreen(vm = vm, onOpenSettings = { screen = "settings" })
     }
 }

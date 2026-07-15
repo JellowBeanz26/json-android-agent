@@ -7,8 +7,10 @@ import com.jellowbeanz.json.data.ChatRepository
 import com.jellowbeanz.json.data.Conversation
 import com.jellowbeanz.json.data.JsonDatabase
 import com.jellowbeanz.json.data.Message
+import com.jellowbeanz.json.data.Settings
 import com.jellowbeanz.json.data.SettingsStore
 import com.jellowbeanz.json.agent.PhoneAgent
+import com.jellowbeanz.json.memory.MemoryExtractor
 import com.jellowbeanz.json.llm.GeminiProvider
 import com.jellowbeanz.json.llm.Llm
 import com.jellowbeanz.json.llm.LocalProvider
@@ -152,6 +154,30 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
             repo.addMessage(id, "assistant", targetA.ifBlank { "(no response)" }, System.currentTimeMillis())
             _streaming.value = Streaming(active = false)
+            maybeRemember(trimmed, targetA, apiKey, s)
+        }
+    }
+
+    /**
+     * After a normal reply, quietly learn durable facts about the user (like ChatGPT's memory).
+     * Best-effort and Gemini-only; when memory grows past the cap it consolidates instead of
+     * blindly dropping the oldest. Never blocks or breaks the chat.
+     */
+    private fun maybeRemember(userText: String, assistantText: String, apiKey: String, s: Settings) {
+        if (!s.memoryEnabled || s.useLocal || assistantText.isBlank()) return
+        if (Llm.forKey(apiKey) != GeminiProvider) return // extractor uses the Gemini endpoint
+        viewModelScope.launch {
+            val existing = settings.snapshot().memories
+            val facts = MemoryExtractor.extract(apiKey, "gemini-2.5-flash", userText, assistantText, existing)
+            if (facts.isEmpty()) return@launch
+            facts.forEach { settings.addMemory(it) }
+            val after = settings.snapshot().memories
+            if (after.size > MemoryExtractor.MAX) {
+                val merged = MemoryExtractor.consolidate(apiKey, "gemini-2.5-flash", after)
+                settings.clearMemories()
+                merged.forEach { settings.addMemory(it) }
+            }
+            Logger.d("memory: learned ${facts.size}, ${settings.snapshot().memories.size} total")
         }
     }
 

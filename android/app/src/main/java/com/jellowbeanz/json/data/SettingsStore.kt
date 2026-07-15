@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -25,6 +26,8 @@ data class Settings(
     val useLocal: Boolean = false,
     val localUrl: String = "",
     val localModel: String = "",
+    val memoryEnabled: Boolean = true,
+    val memories: List<String> = emptyList(),
 )
 
 /** DataStore-backed preferences: theme, model, personalization, style. */
@@ -39,6 +42,8 @@ class SettingsStore(private val context: Context) {
     val useLocal: Flow<Boolean> = context.dataStore.data.map { it[USE_LOCAL] ?: false }
     val localUrl: Flow<String> = context.dataStore.data.map { it[LOCAL_URL] ?: "" }
     val localModel: Flow<String> = context.dataStore.data.map { it[LOCAL_MODEL] ?: "" }
+    val memoryEnabled: Flow<Boolean> = context.dataStore.data.map { it[MEMORY_ENABLED] ?: true }
+    val memories: Flow<List<String>> = context.dataStore.data.map { (it[MEMORIES] ?: emptySet()).toList() }
 
     suspend fun setTheme(v: String) = context.dataStore.edit { it[THEME] = v }
     suspend fun setModel(v: String) = context.dataStore.edit { it[MODEL] = v }
@@ -49,6 +54,14 @@ class SettingsStore(private val context: Context) {
     suspend fun setUseLocal(v: Boolean) = context.dataStore.edit { it[USE_LOCAL] = v }
     suspend fun setLocalUrl(v: String) = context.dataStore.edit { it[LOCAL_URL] = v }
     suspend fun setLocalModel(v: String) = context.dataStore.edit { it[LOCAL_MODEL] = v }
+    suspend fun setMemoryEnabled(v: Boolean) = context.dataStore.edit { it[MEMORY_ENABLED] = v }
+    suspend fun addMemory(text: String) {
+        val t = text.trim()
+        if (t.isNotBlank()) context.dataStore.edit { it[MEMORIES] = (it[MEMORIES] ?: emptySet()) + t }
+    }
+    suspend fun removeMemory(text: String) =
+        context.dataStore.edit { it[MEMORIES] = (it[MEMORIES] ?: emptySet()) - text }
+    suspend fun clearMemories() = context.dataStore.edit { it.remove(MEMORIES) }
 
     /** One consistent read for building an outgoing request. */
     suspend fun snapshot(): Settings {
@@ -63,6 +76,8 @@ class SettingsStore(private val context: Context) {
             useLocal = p[USE_LOCAL] ?: false,
             localUrl = p[LOCAL_URL] ?: "",
             localModel = p[LOCAL_MODEL] ?: "",
+            memoryEnabled = p[MEMORY_ENABLED] ?: true,
+            memories = (p[MEMORIES] ?: emptySet()).toList(),
         )
     }
 
@@ -78,6 +93,8 @@ class SettingsStore(private val context: Context) {
         private val USE_LOCAL = booleanPreferencesKey("use_local")
         private val LOCAL_URL = stringPreferencesKey("local_url")
         private val LOCAL_MODEL = stringPreferencesKey("local_model")
+        private val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
+        private val MEMORIES = stringSetPreferencesKey("memories")
 
         val STYLES = listOf(
             StyleOption("default", "Default", ""),
@@ -99,6 +116,10 @@ class SettingsStore(private val context: Context) {
             STYLES.firstOrNull { it.id == s.style }?.prompt?.takeIf { it.isNotBlank() }
                 ?.let { sb.append("\nStyle: $it") }
             if (s.instructions.isNotBlank()) sb.append("\nUser instructions: ${s.instructions.trim()}")
+            if (s.memoryEnabled && s.memories.isNotEmpty()) {
+                sb.append("\n\nWhat you remember about the user (from past chats):")
+                s.memories.forEach { sb.append("\n- ").append(it) }
+            }
             return sb.toString()
         }
     }

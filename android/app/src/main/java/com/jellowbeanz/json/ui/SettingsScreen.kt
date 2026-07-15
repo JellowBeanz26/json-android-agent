@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onOpenDebug: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onOpenDebug: () -> Unit, onOpenMemory: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val c = MaterialTheme.colorScheme
@@ -92,6 +92,16 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onOpenDebug: () 
                 Spacer(Modifier.height(14.dp))
                 FieldLabel("Custom instructions")
                 SettingField(instructions, { instructions = it; scope.launch { store.setInstructions(it) } }, "e.g. always answer in Hebrew", singleLine = false)
+            }
+
+            Section("Memory") {
+                Text(
+                    "Json remembers useful facts about you across chats and uses them to personalize replies.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = onOpenMemory, shape = RoundedCornerShape(14.dp)) { Text("Manage memory") }
             }
 
             Section("Response style") {
